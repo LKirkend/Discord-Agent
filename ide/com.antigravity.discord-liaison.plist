@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Unique reverse-DNS label for launchd -->
+    <key>Label</key>
+    <string>com.antigravity.discord-liaison</string>
+
+    <!-- Run the IDE bot using its virtualenv Python -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/logankirkendall/Documents/antigravity/Discord-Agent-IDE/.venv/bin/python</string>
+        <string>-u</string>
+        <string>/Users/logankirkendall/.gemini/config/plugins/discord-liaison-ide/skills/discord-liaison-ide/scripts/bot.py</string>
+    </array>
+
+    <!-- Auto-restart on crash or unexpected exit -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Don't launch until the user is logged in and the network is available -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Throttle restart back-off (seconds) to avoid rapid crash loops -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- Log output -->
+    <key>StandardOutPath</key>
+    <string>/Users/logankirkendall/.gemini/antigravity-ide/logs/daemon.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/logankirkendall/.gemini/antigravity-ide/logs/daemon.err.log</string>
+
+    <!-- Working directory -->
+    <key>WorkingDirectory</key>
+    <string>/Users/logankirkendall/.gemini/config/plugins/discord-liaison-ide/skills/discord-liaison-ide/scripts</string>
+
+    <!-- Environment variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+        <key>HOME</key>
+        <string>/Users/logankirkendall</string>
+    </dict>
+</dict>
+</plist>
