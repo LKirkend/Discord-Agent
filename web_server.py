@@ -1608,7 +1608,7 @@ async def get_discord_target() -> Optional[discord.abc.Messageable]:
     """
     Description:
         Resolves and returns the target Discord user or channel destination.
-        Attempts user fetch first, then name iteration, then channel/guild text fallbacks.
+        Attempts to resolve #agent-updates channel first, then user DM, then channel/guild text fallbacks.
     Usage:
         target = await get_discord_target()
     Usage Example:
@@ -1617,6 +1617,12 @@ async def get_discord_target() -> Optional[discord.abc.Messageable]:
     if not state.bot or not state.bot.is_ready():
         return None
         
+    # Prioritize #agent-updates channel if present in any guild
+    for guild in state.bot.guilds:
+        for chan in guild.text_channels:
+            if chan.name == "agent-updates" and chan.permissions_for(guild.me).send_messages:
+                return chan
+
     import bot
     discord_user_id = bot.DISCORD_USER_ID or os.getenv("DISCORD_USER_ID")
     discord_username = os.getenv("DISCORD_USER_NAME", "Tig1")

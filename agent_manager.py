@@ -386,15 +386,15 @@ class OllamaAgent:
         with urllib.request.urlopen(req) as response:
             return response.read()
 
-async def run_spawned_agent(prompt: str, channel, project_name: Optional[str] = None):
+async def run_spawned_agent(prompt: str, channel, project_name: Optional[str] = None, convo_id: Optional[str] = None):
     """
     Description:
         Spawns a background agent turn using either Gemini or Ollama.
         Supports automatic fallback to Ollama on quota depletion.
     Usage:
-        await run_spawned_agent(prompt, channel, project_name)
+        await run_spawned_agent(prompt, channel, project_name, convo_id)
     Usage Example:
-        await run_spawned_agent("compile project", channel, "OpenFeedbackRemover")
+        await run_spawned_agent("compile project", channel, "OpenFeedbackRemover", "session-id-123")
     """
     project_path = get_project_folder_path(project_name) if project_name else None
     
@@ -459,10 +459,9 @@ async def run_spawned_agent(prompt: str, channel, project_name: Optional[str] = 
         app_data_dir=state.APP_DATA_DIR,
     )
     
-    convo_id = None
+    convo_id = convo_id or str(uuid.uuid4())
     try:
         response = None
-        convo_id = "dynamic-session-id"
         os.environ["ANTIGRAVITY_CONVERSATION_ID"] = convo_id
         
         await status_msg.edit(content=f"🚀 **Agent active ({state.MODEL_PROVIDER}) and executing task...**\n• Project: `{project_name or 'Global'}`\n• Session ID: `{convo_id[:8]}`\n• Request: *{prompt}*")

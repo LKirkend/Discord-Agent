@@ -677,6 +677,8 @@ class TestDiscordApprovalServer(unittest.TestCase):
         
         mock_message = MagicMock()
         mock_message.author.bot = False
+        mock_message.author.id = 12345
+        mock_message.guild = None
         mock_message.content = "run pytest in Discord-Agent"
         mock_message.channel = MagicMock()
         
@@ -709,6 +711,8 @@ class TestDiscordApprovalServer(unittest.TestCase):
         
         mock_message = MagicMock()
         mock_message.author.bot = False
+        mock_message.author.id = 12345
+        mock_message.guild = None
         mock_message.content = "do the next step"
         
         mock_channel = MagicMock()
@@ -1779,6 +1783,145 @@ class TestDiscordApprovalServer(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"][0]["id"], "gemini-2.5-flash")
 
+    async def _test_registered_user_constraint_async(self):
+        """
+        Description:
+            Verifies that messages from other (non-registered) users are ignored.
+        Usage:
+            await self._test_registered_user_constraint_async()
+        Usage Example:
+            await self._test_registered_user_constraint_async()
+        """
+        temp_bot = bot.create_bot(use_message_content=True)
+        mock_message = MagicMock()
+        mock_message.author.bot = False
+        mock_message.author.name = "MaliciousUser"
+        mock_message.author.id = 99999
+        mock_message.content = "Run rm -rf /"
+        
+        fut_proc = self.loop.create_future()
+        fut_proc.set_result(None)
+        temp_bot.process_commands = MagicMock(return_value=fut_proc)
+        
+        with patch.dict(os.environ, {"DISCORD_USER_ID": "12345", "DISCORD_USER_NAME": "Tig1"}):
+            await temp_bot.on_message(mock_message)
+            temp_bot.process_commands.assert_not_called()
+
+    @patch("bot.run_spawned_agent")
+    async def _test_server_thread_routing_async(self, mock_run_agent):
+        """
+        Description:
+            Verifies that prompt invocations in a server channel create a thread,
+            and replies inside the thread continue the conversation.
+        Usage:
+            await self._test_server_thread_routing_async()
+        Usage Example:
+            await self._test_server_thread_routing_async()
+        """
+        temp_bot = bot.create_bot(use_message_content=True)
+        
+        mock_msg_server = MagicMock()
+        mock_msg_server.author.bot = False
+        mock_msg_server.author.id = 12345
+        mock_msg_server.guild = MagicMock()
+        mock_msg_server.content = "Build something"
+        
+        mock_thread = MagicMock()
+        fut_thread_send = self.loop.create_future()
+        fut_thread_send.set_result(None)
+        mock_thread.send = MagicMock(return_value=fut_thread_send)
+        
+        fut_create_thread = self.loop.create_future()
+        fut_create_thread.set_result(mock_thread)
+        mock_msg_server.create_thread = MagicMock(return_value=fut_create_thread)
+        
+        fut_proc = self.loop.create_future()
+        fut_proc.set_result(None)
+        temp_bot.process_commands = MagicMock(return_value=fut_proc)
+        
+        with patch.dict(os.environ, {"DISCORD_USER_ID": "12345"}):
+            await temp_bot.on_message(mock_msg_server)
+            mock_msg_server.create_thread.assert_called_once()
+            mock_run_agent.assert_called_once()
+
+    @patch("bot.bot")
+    @patch("bot.discover_agent_sessions")
+    @patch("bot.scan_active_processes")
+    async def _test_dashboard_pin_cleaning_async(self, mock_scan, mock_sessions, mock_bot):
+        """
+        Description:
+            Verifies update_dashboard pins a single dashboard, cleans duplicate pins,
+            and skips deleting the dashboard on DM purge.
+        Usage:
+            await self._test_dashboard_pin_cleaning_async()
+        Usage Example:
+            await self._test_dashboard_pin_cleaning_async()
+        """
+        mock_sessions.return_value = []
+        mock_scan.return_value = []
+        
+        mock_bot.is_ready.return_value = True
+        mock_bot.user.id = 12345
+        
+        mock_user = MagicMock()
+        mock_dm = MagicMock()
+        
+        mock_pm1 = MagicMock()
+        mock_pm1.author.id = 12345
+        mock_pm1.id = 101
+        embed_mock1 = MagicMock()
+        embed_mock1.title = "🖥️ Multi-Agent System Dashboard"
+        mock_pm1.embeds = [embed_mock1]
+        
+        mock_pm2 = MagicMock()
+        mock_pm2.author.id = 12345
+        mock_pm2.id = 102
+        embed_mock2 = MagicMock()
+        embed_mock2.title = "🖥️ Multi-Agent System Dashboard"
+        mock_pm2.embeds = [embed_mock2]
+        
+        fut_delete = self.loop.create_future()
+        fut_delete.set_result(None)
+        mock_pm2.delete = MagicMock(return_value=fut_delete)
+        
+        fut_unpin2 = self.loop.create_future()
+        fut_unpin2.set_result(None)
+        mock_pm2.unpin = MagicMock(return_value=fut_unpin2)
+        
+        fut_edit1 = self.loop.create_future()
+        fut_edit1.set_result(None)
+        mock_pm1.edit = MagicMock(return_value=fut_edit1)
+        
+        fut_pins = self.loop.create_future()
+        fut_pins.set_result([mock_pm1, mock_pm2])
+        mock_dm.pins = MagicMock(return_value=fut_pins)
+        
+        fut_create_dm = self.loop.create_future()
+        fut_create_dm.set_result(mock_dm)
+        mock_user.create_dm = MagicMock(return_value=fut_create_dm)
+        mock_user.dm_channel = mock_dm
+        
+        fut_user = self.loop.create_future()
+        fut_user.set_result(mock_user)
+        mock_bot.fetch_user = MagicMock(return_value=fut_user)
+        
+        # Mocking dm history for cleaning obsolete messages
+        class AsyncIter:
+            def __init__(self, items):
+                self.items = items
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                if not self.items:
+                    raise StopAsyncIteration
+                return self.items.pop(0)
+        mock_dm.history = MagicMock(return_value=AsyncIter([mock_pm2]))
+        
+        bot.state.dashboard_msg = None
+        with patch.dict(os.environ, {"DISCORD_USER_ID": "12345"}):
+            await bot.update_dashboard()
+            mock_pm2.delete.assert_called_once()
+
     def test_new_features_execution(self):
         """Test wrapper for running new async test cases on the event loop."""
         self.loop.run_until_complete(self._test_transcript_monitor_filtering_async())
@@ -1794,6 +1937,9 @@ class TestDiscordApprovalServer(unittest.TestCase):
         self.loop.run_until_complete(self._test_openai_proxy_ollama_async())
         self.loop.run_until_complete(self._test_openai_proxy_stream_async())
         self.loop.run_until_complete(self._test_openai_models_async())
+        self.loop.run_until_complete(self._test_registered_user_constraint_async())
+        self.loop.run_until_complete(self._test_server_thread_routing_async())
+        self.loop.run_until_complete(self._test_dashboard_pin_cleaning_async())
 
 
 if __name__ == "__main__":

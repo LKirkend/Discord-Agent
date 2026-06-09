@@ -859,6 +859,8 @@ def create_bot(use_message_content: bool):
             if os.getenv("DISCORD_USER_ID") != author_id:
                 print(f"[Bot] Auto-registering user {DISCORD_USER_NAME} with ID: {author_id}")
                 web_server.update_env_file(author_id)
+                os.environ["DISCORD_USER_ID"] = author_id
+                state.DISCORD_USER_ID = author_id
                 try:
                     await message.channel.send(f"🎯 **Registered!** Hello {DISCORD_USER_NAME}, I have linked your Discord account (ID: `{author_id}`) for agent approvals.")
                     if not dashboard_updater.is_running():
@@ -870,7 +872,12 @@ def create_bot(use_message_content: bool):
                 except Exception as e:
                     print(f"Error confirmation registration: {e}")
 
+        # Enforce registered user constraints
+        registered_id = os.getenv("DISCORD_USER_ID")
         author_id = str(message.author.id)
+        if not registered_id or author_id != registered_id:
+            return
+
         if author_id in state.active_text_prompts:
             fut = state.active_text_prompts.pop(author_id)
             if not fut.done():
@@ -886,20 +893,66 @@ def create_bot(use_message_content: bool):
             return
 
         if not message.content.startswith("!"):
-            sessions = discover_agent_sessions()
-            active_sessions = [s for s in sessions if s.get('status') == 'Active']
-            if active_sessions:
-                target_session = active_sessions[0]
-                convo_id = target_session['convo_id']
-                goal_name = target_session['goal_name']
-                success = send_agent_message(convo_id, message.content)
-                if success:
-                    await message.channel.send(f"📬 **Prompt routed to active agent `{convo_id[:8]}` ({goal_name[:30]}):** {message.content}")
+            import uuid
+            # Check if this is a guild text channel (server)
+            if message.guild is not None:
+                # Case A: Message is already inside a thread
+                if isinstance(message.channel, discord.Thread):
+                    thread_name = message.channel.name
+                    convo_id = None
+                    if "session-" in thread_name:
+                        short_id = thread_name.split("session-")[-1].strip()
+                        sessions = discover_agent_sessions()
+                        for s in sessions:
+                            if s["convo_id"].startswith(short_id):
+                                convo_id = s["convo_id"]
+                                break
+                    
+                    if convo_id:
+                        sessions = discover_agent_sessions()
+                        active_sessions = [s for s in sessions if s.get('status') == 'Active' and s['convo_id'] == convo_id]
+                        if active_sessions:
+                            # Route to the active thread session
+                            success = send_agent_message(convo_id, message.content)
+                            if success:
+                                await message.channel.send(f"📬 **Prompt routed to active thread agent:** {message.content}")
+                                return
+                        # If the session went idle/stopped, spawn another run using the SAME conversation ID to continue
+                        asyncio.create_task(run_spawned_agent(message.content, message.channel, convo_id=convo_id))
+                    else:
+                        # Fallback: spawn new session in this thread
+                        new_convo_id = str(uuid.uuid4())
+                        asyncio.create_task(run_spawned_agent(message.content, message.channel, convo_id=new_convo_id))
+                
+                # Case B: Message is in a normal text channel -> create a new thread
                 else:
-                    await message.channel.send(f"❌ Failed to route prompt to active agent `{convo_id[:8]}`. Spawning new session instead...")
-                    asyncio.create_task(run_spawned_agent(message.content, message.channel))
+                    new_convo_id = str(uuid.uuid4())
+                    try:
+                        # Create a public thread started from the message
+                        thread = await message.create_thread(name=f"🤖 session-{new_convo_id[:8]}", auto_archive_duration=60)
+                        await thread.send(f"🚀 **Started new agent session** (`{new_convo_id[:8]}`). Executing agent...")
+                        asyncio.create_task(run_spawned_agent(message.content, thread, convo_id=new_convo_id))
+                    except Exception as e:
+                        # Fallback to normal execution in current channel
+                        print(f"[Bot] Failed to create thread: {e}")
+                        asyncio.create_task(run_spawned_agent(message.content, message.channel, convo_id=new_convo_id))
+            
+            # Case C: DM Channel
             else:
-                asyncio.create_task(run_spawned_agent(message.content, message.channel))
+                sessions = discover_agent_sessions()
+                active_sessions = [s for s in sessions if s.get('status') == 'Active']
+                if active_sessions:
+                    target_session = active_sessions[0]
+                    convo_id = target_session['convo_id']
+                    goal_name = target_session['goal_name']
+                    success = send_agent_message(convo_id, message.content)
+                    if success:
+                        await message.channel.send(f"📬 **Prompt routed to active agent `{convo_id[:8]}` ({goal_name[:30]}):** {message.content}")
+                    else:
+                        await message.channel.send(f"❌ Failed to route prompt to active agent `{convo_id[:8]}`. Spawning new session instead...")
+                        asyncio.create_task(run_spawned_agent(message.content, message.channel))
+                else:
+                    asyncio.create_task(run_spawned_agent(message.content, message.channel))
 
         await new_bot.process_commands(message)
 
