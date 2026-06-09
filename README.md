@@ -1,4 +1,4 @@
-# Antigravity Discord Liaison Bot (Unified Workspace)
+# Discord Liaison Bot
 
 A centralized, interactive Discord bot and API daemon designed to act as an approval liaison, dashboard monitor, and message routing hub for Google Antigravity SDK agents. 
 
