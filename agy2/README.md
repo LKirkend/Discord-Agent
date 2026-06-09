@@ -50,7 +50,7 @@ DISCORD_CLIENT_SECRET=your_client_secret_here
 DISCORD_CHANNEL_ID=
 DISCORD_USER_ID=your_discord_user_id_for_approvals
 DISCORD_USER_NAME=your_discord_username_for_autoregistration
-PORT=18000
+PORT=18001
 ```
 
 ### Path Configurations (Optional)
@@ -70,12 +70,25 @@ If running outside default paths, you can override them via environment variable
    - Add the bot to your target server using the generated URL.
 
 2. **Daemon Installation**:
-   - Set up a virtual environment and install the required dependencies:
+   
+   #### Option A: Automated Installation (Recommended)
+   Run the dedicated installer in the root workspace folder to provision files, setup the `.venv`, register a launch agent (macOS auto-startup), and link the plugin.
+   * **macOS/Linux**:
      ```bash
-     python3 -m venv .venv
-     source .venv/bin/activate
-     pip install -r requirements.txt
+     ./install_agy2.sh
      ```
+   * **Windows**:
+     ```cmd
+     install_agy2.bat
+     ```
+
+   #### Option B: Manual Setup
+   Set up a virtual environment and install the required dependencies:
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
 
 3. **Running the Bot Daemon**:
    - Launch the daemon concurrently running the FastAPI server and Discord loop:

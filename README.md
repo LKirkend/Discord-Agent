@@ -21,10 +21,38 @@ A standalone Discord bot that can act as a liaison to AI models requesting permi
   - `agent_manager.py`: Spawns and manages agent instances.
   - `helpers.py`: Directory scanner, project resolver, and process utilities.
   - `state.py`: Configuration and shared variable states.
-  - `install.py`: macOS LaunchAgent daemon registration script.
+  - `install_ide.py` / `install_agy2.py`: Installation scripts for IDE and AGY2 plugin versions respectively.
   - `config.json`: Dynamic endpoints and API key configuration settings.
 - `/ide`: Specific VS Code extension files (such as compiled `main.js` integrations).
 - `/agy2`: Specific Antigravity 2 GUI extension assets and scripts.
+
+---
+
+## 🛠️ Installation & Setup
+
+We provide separate, dedicated installers for each environment:
+
+### 1. Antigravity IDE Extension
+To install the Discord bot liaison and register it as an auto-start daemon for the Antigravity IDE:
+* **macOS/Linux**:
+  ```bash
+  ./install_ide.sh
+  ```
+* **Windows**:
+  ```cmd
+  install_ide.bat
+  ```
+
+### 2. Antigravity 2 (AGY2) Extension
+To install the bot liaison registered for the AGY2 client framework:
+* **macOS/Linux**:
+  ```bash
+  ./install_agy2.sh
+  ```
+* **Windows**:
+  ```cmd
+  install_agy2.bat
+  ```
 
 ---
 
@@ -63,11 +91,11 @@ To set target LLMs and keys, edit [config.json](file:///Users/logankirkendall/Do
 ```
 
 ### Options:
-- **`model_provider`**: `"gemini"` or `"ollama"`.
+- **`model_provider`**: `"gemini" | "ollama" | "claude" | "deepseek" | "groq" | "openrouter" | "together" | "huggingface" | "openai" | "custom"`.
 - **`local_endpoint`**: The base URL of your local Ollama instance (default: `http://localhost:11434/v1`).
 - **`local_model_name`**: The model Ollama should run (default: `qwen2.5-coder:7b`).
 - **`remote_endpoint`**: Optional custom OpenAI-compatible remote endpoint. If left empty when provider is `"gemini"`, defaults to the Google Gemini OpenAI-compatibility API endpoint (`https://generativelanguage.googleapis.com/v1beta/openai`).
-- **`remote_api_key`**: Your API key (e.g., Gemini API Key). If left empty, fallback to environment `GEMINI_API_KEY` is used.
+- **`remote_api_key`**: Your API key. If left empty, fallback to environment key is used.
 - **`port`**: Port for the daemon web server (default: `18000`).
 
 ---
@@ -83,7 +111,7 @@ To route any OpenAI-compatible client (like Cursor, VSCode extensions, custom ag
 2. **API Key**: Any string (or your Gemini API Key if bypassing daemon cache).
 3. **Session Tracking (Optional)**: Pass a header `x-conversation-id` or set the request's `"user"` parameter to track conversational logs per session.
 
-When your client makes completions calls (e.g. to `http://localhost:18000/v1/chat/completions`), the prompt and the model response will be mirrored directly to your Discord DM channel in real-time.
+When your client makes completions calls (e.g. to `http://localhost:18000/v1/chat/completions`), the prompt and the model response will be mirrored directly to your Discord DM channel or `#agent-updates` in real-time.
 
 ---
 
@@ -92,5 +120,5 @@ When your client makes completions calls (e.g. to `http://localhost:18000/v1/cha
 * **Author**: Logan Kirkendall (<Logan@LKAud.io>) | Website: [LKAud.io](https://LKAud.io)
 * **Default Author Contact**: `Logan@LKAud.io`
 
-For installation instructions, configurations, and bot command usage guides, consult the sub-module files or run the unified launcher `install.py`.
+For installation configurations and bot command usage guides, run the launcher scripts.
 

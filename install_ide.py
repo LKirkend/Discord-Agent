@@ -1,3 +1,12 @@
+"""
+File: install_ide.py
+Description:
+    Self-contained setup and installation wizard for the Discord Liaison Bot (IDE) plugin.
+    Deploys Python dependencies, structures config files, sets up sidecars,
+    and registers launchd launch agents for auto-startup.
+Author: Logan Kirkendall <Logan@LKAud.io>
+"""
+
 import os
 import sys
 import shutil
@@ -11,6 +20,7 @@ import platform
 PLUGIN_NAME = "discord-liaison-ide"
 DISPLAY_NAME = "Discord Liaison Bot (IDE)"
 DEFAULT_PORT = "18000"
+PLIST_LABEL = "com.antigravity.discord-liaison-ide"
 
 GUI_AVAILABLE = False
 try:
@@ -100,14 +110,19 @@ Once connected, the bot will post a live dashboard in your Discord DMs where you
 """
 
 
-PLIST_LABEL = "com.antigravity.discord-liaison"
-PLIST_SOURCE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "com.antigravity.discord-liaison.plist")
 PLIST_DEST = os.path.expanduser(f"~/Library/LaunchAgents/{PLIST_LABEL}.plist")
 
 
 def launchd_register(python_exe: str, bot_script: str, scripts_dir: str, log_callback) -> bool:
-    """Install and load the macOS LaunchAgent for auto-launch on login.
-    No-op on non-macOS systems."""
+    """
+    Description:
+        Install and load the macOS LaunchAgent for auto-launch on login.
+        No-op on non-macOS systems.
+    Usage:
+        launchd_register(python_exe, bot_script, scripts_dir, log_callback)
+    Usage Example:
+        launchd_register("/usr/bin/python3", "bot.py", "/path/to/scripts", print)
+    """
     if platform.system() != "Darwin":
         log_callback("⚠️  LaunchAgent registration skipped (not macOS).")
         return True
@@ -170,7 +185,14 @@ def launchd_register(python_exe: str, bot_script: str, scripts_dir: str, log_cal
 
 
 def launchd_unregister(log_callback=print) -> bool:
-    """Unload and remove the macOS LaunchAgent. No-op on non-macOS."""
+    """
+    Description:
+        Unload and remove the macOS LaunchAgent. No-op on non-macOS.
+    Usage:
+        launchd_unregister(log_callback)
+    Usage Example:
+        launchd_unregister(print)
+    """
     if platform.system() != "Darwin":
         return True
     try:
@@ -187,7 +209,14 @@ def launchd_unregister(log_callback=print) -> bool:
 
 
 def perform_installation(token, user_id, username, client_id, client_secret, gemini_key, port, log_callback):
-    """Executes the setup process step-by-step."""
+    """
+    Description:
+        Executes the setup process step-by-step.
+    Usage:
+        perform_installation(token, user_id, username, client_id, client_secret, gemini_key, port, log_callback)
+    Usage Example:
+        perform_installation("token", "user_id", "Tig1", "", "", "", "18000", print)
+    """
     try:
         log_callback("🚀 Starting installation wizard...")
         
@@ -281,7 +310,7 @@ def perform_installation(token, user_id, username, client_id, client_secret, gem
             "restart_policy": "always",
             "has_web_ui": True,
             "ui_config": {
-                "display_name": "Liaison Status (IDE)" if "IDE" in DISPLAY_NAME else "Liaison Status",
+                "display_name": "Liaison Status (IDE)",
                 "views": [
                     { "entrypoint": 2, "path": "/status" },
                     { "entrypoint": 1, "path": "/status" }
@@ -308,6 +337,11 @@ def perform_installation(token, user_id, username, client_id, client_secret, gem
 
 
 class InstallerGUI:
+    """
+    Description:
+        Graphical User Interface Class for the installer script.
+        Builds a Sleek Dark mode theme using Tkinter and handles inputs.
+    """
     def __init__(self):
         self.root = tk.Tk()
         self.root.title(f"{DISPLAY_NAME} Setup wizard")
@@ -506,7 +540,6 @@ class InstallerGUI:
         success = perform_installation(
             token, user_id, username, client_id, client_secret, gemini_key, port, self.write_log
         )
-        
         self.root.after(0, self.finish_installation, success)
         
     def finish_installation(self, success):
@@ -523,7 +556,14 @@ class InstallerGUI:
 
 
 def run_cli_installer():
-    """Terminal fallback wizard."""
+    """
+    Description:
+        Terminal fallback wizard when Tkinter is not available.
+    Usage:
+        run_cli_installer()
+    Usage Example:
+        run_cli_installer()
+    """
     print("==================================================")
     print(f"       {DISPLAY_NAME} CLI SETUP")
     print("==================================================")

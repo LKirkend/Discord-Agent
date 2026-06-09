@@ -1,5 +1,5 @@
 @echo off
-:: Cross-platform installation launcher for Windows
+:: Cross-platform installation launcher for Windows (AGY2 Version)
 
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
@@ -8,5 +8,5 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-python "%~dp0\install.py" %*
+python "%~dp0\install_agy2.py" %*
 pause
