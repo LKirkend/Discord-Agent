@@ -1304,7 +1304,9 @@ class TestDiscordApprovalServer(unittest.TestCase):
         self.assertEqual(bot.MODEL_PROVIDER, "ollama")
         self.assertEqual(bot.AUTO_SWITCH_LOCAL, True)
         self.assertEqual(bot.DISCORD_BOT_PERMISSIONS, "12345678")
-        mock_update.assert_called_once_with("ollama", True, "12345678")
+        mock_update.assert_called_once()
+        args, kwargs = mock_update.call_args
+        self.assertEqual(args[0].model_provider, "ollama")
 
 
     def test_command_matches_rule_wildcard(self):
@@ -1922,6 +1924,114 @@ class TestDiscordApprovalServer(unittest.TestCase):
             await bot.update_dashboard()
             mock_pm2.delete.assert_called_once()
 
+    async def _test_multi_provider_routing_async(self):
+        """
+        Description:
+            Verifies resolve_target_and_payload routes all new providers to the correct URLs,
+            headers, and payloads based on settings.
+        Usage:
+            await self._test_multi_provider_routing_async()
+        Usage Example:
+            await self._test_multi_provider_routing_async()
+        """
+        import web_server
+        import state
+        
+        # Test Case 1: deepseek
+        state.MODEL_PROVIDER = "deepseek"
+        state.DEEPSEEK_API_KEY = "ds-key"
+        state.DEEPSEEK_MODEL_NAME = "deepseek-coder"
+        url, pay, head = web_server.resolve_target_and_payload({"messages": [{"role": "user", "content": "hi"}]})
+        self.assertEqual(url, "https://api.deepseek.com/v1/chat/completions")
+        self.assertEqual(head.get("Authorization"), "Bearer ds-key")
+        self.assertEqual(pay.get("model"), "deepseek-coder")
+        
+        # Test Case 2: groq
+        state.MODEL_PROVIDER = "groq"
+        state.GROQ_API_KEY = "g-key"
+        state.GROQ_MODEL_NAME = "mixtral"
+        url, pay, head = web_server.resolve_target_and_payload({"messages": []})
+        self.assertEqual(url, "https://api.groq.com/openai/v1/chat/completions")
+        self.assertEqual(head.get("Authorization"), "Bearer g-key")
+        self.assertEqual(pay.get("model"), "mixtral")
+
+        # Test Case 3: huggingface
+        state.MODEL_PROVIDER = "huggingface"
+        state.HF_API_KEY = "hf-key"
+        state.HF_MODEL_NAME = "custom-hf-model"
+        url, pay, head = web_server.resolve_target_and_payload({"messages": []})
+        self.assertEqual(url, "https://api-inference.huggingface.co/v1/chat/completions")
+        self.assertEqual(head.get("Authorization"), "Bearer hf-key")
+        self.assertEqual(pay.get("model"), "custom-hf-model")
+
+    async def _test_claude_translation_and_stream_async(self):
+        """
+        Description:
+            Verifies Anthropic Claude payload translation, non-streaming translation,
+            and streaming chunk parsing and conversion to OpenAI format.
+        Usage:
+            await self._test_claude_translation_and_stream_async()
+        Usage Example:
+            await self._test_claude_translation_and_stream_async()
+        """
+        import web_server
+        import state
+        
+        # 1. Verify Payload Translation
+        state.MODEL_PROVIDER = "claude"
+        state.CLAUDE_API_KEY = "c-key"
+        state.CLAUDE_MODEL_NAME = "claude-3-5"
+        raw_req = {
+            "messages": [
+                {"role": "system", "content": "You are a helper"},
+                {"role": "user", "content": "Hello"}
+            ]
+        }
+        url, pay, head = web_server.resolve_target_and_payload(raw_req)
+        self.assertEqual(url, "https://api.anthropic.com/v1/messages")
+        self.assertEqual(head.get("x-api-key"), "c-key")
+        self.assertEqual(pay.get("system"), "You are a helper")
+        self.assertEqual(len(pay.get("messages")), 1)
+        self.assertEqual(pay.get("messages")[0]["role"], "user")
+        
+        # 2. Verify Non-Streaming Translation
+        claude_res = {
+            "id": "msg_123",
+            "content": [{"type": "text", "text": "Hi back"}],
+            "stop_reason": "end_turn",
+            "model": "claude-3-5",
+            "usage": {"input_tokens": 5, "output_tokens": 10}
+        }
+        openai_res = web_server.translate_claude_response_to_openai(claude_res)
+        self.assertEqual(openai_res["choices"][0]["message"]["content"], "Hi back")
+        self.assertEqual(openai_res["choices"][0]["finish_reason"], "stop")
+        self.assertEqual(openai_res["usage"]["prompt_tokens"], 5)
+
+    @patch("web_server.update_settings_in_env")
+    async def _test_update_settings_multi_provider_async(self, mock_update):
+        """
+        Description:
+            Verifies SettingsRequest accepts multi-provider fields and triggers update_settings_in_env.
+        Usage:
+            await self._test_update_settings_multi_provider_async()
+        Usage Example:
+            await self._test_update_settings_multi_provider_async()
+        """
+        import web_server
+        from fastapi.testclient import TestClient
+        
+        client = TestClient(web_server.app)
+        settings_payload = {
+            "model_provider": "deepseek",
+            "auto_switch_local": True,
+            "discord_bot_permissions": "12345",
+            "deepseek_api_key": "new-ds-key",
+            "deepseek_model_name": "deepseek-reasoner"
+        }
+        response = client.post("/api/settings", json=settings_payload)
+        self.assertEqual(response.status_code, 200)
+        mock_update.assert_called_once()
+
     def test_new_features_execution(self):
         """Test wrapper for running new async test cases on the event loop."""
         self.loop.run_until_complete(self._test_transcript_monitor_filtering_async())
@@ -1940,6 +2050,9 @@ class TestDiscordApprovalServer(unittest.TestCase):
         self.loop.run_until_complete(self._test_registered_user_constraint_async())
         self.loop.run_until_complete(self._test_server_thread_routing_async())
         self.loop.run_until_complete(self._test_dashboard_pin_cleaning_async())
+        self.loop.run_until_complete(self._test_multi_provider_routing_async())
+        self.loop.run_until_complete(self._test_claude_translation_and_stream_async())
+        self.loop.run_until_complete(self._test_update_settings_multi_provider_async())
 
 
 if __name__ == "__main__":

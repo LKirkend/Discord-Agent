@@ -61,6 +61,32 @@ LOCAL_MODEL_NAME = os.getenv("LOCAL_MODEL_NAME", config_data.get("local_model_na
 REMOTE_ENDPOINT = os.getenv("REMOTE_ENDPOINT", config_data.get("remote_endpoint", ""))
 REMOTE_API_KEY = os.getenv("REMOTE_API_KEY", config_data.get("remote_api_key", ""))
 
+# Provider Specific Configurations
+CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", config_data.get("claude_api_key", ""))
+CLAUDE_MODEL_NAME = os.getenv("CLAUDE_MODEL_NAME", config_data.get("claude_model_name", "claude-3-5-sonnet-latest"))
+
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", config_data.get("deepseek_api_key", ""))
+DEEPSEEK_MODEL_NAME = os.getenv("DEEPSEEK_MODEL_NAME", config_data.get("deepseek_model_name", "deepseek-chat"))
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", config_data.get("groq_api_key", ""))
+GROQ_MODEL_NAME = os.getenv("GROQ_MODEL_NAME", config_data.get("groq_model_name", "llama3-8b-8192"))
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", config_data.get("openrouter_api_key", ""))
+OPENROUTER_MODEL_NAME = os.getenv("OPENROUTER_MODEL_NAME", config_data.get("openrouter_model_name", "meta-llama/llama-3-8b-instruct:free"))
+
+TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY", config_data.get("together_api_key", ""))
+TOGETHER_MODEL_NAME = os.getenv("TOGETHER_MODEL_NAME", config_data.get("together_model_name", "meta-llama/Llama-3-8b-chat-hf"))
+
+HF_API_KEY = os.getenv("HF_API_KEY", config_data.get("hf_api_key", ""))
+HF_MODEL_NAME = os.getenv("HF_MODEL_NAME", config_data.get("hf_model_name", "meta-llama/Meta-Llama-3-8B-Instruct"))
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", config_data.get("openai_api_key", ""))
+OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", config_data.get("openai_model_name", "gpt-4o"))
+
+CUSTOM_API_KEY = os.getenv("CUSTOM_API_KEY", config_data.get("custom_api_key", ""))
+CUSTOM_MODEL_NAME = os.getenv("CUSTOM_MODEL_NAME", config_data.get("custom_model_name", ""))
+CUSTOM_ENDPOINT = os.getenv("CUSTOM_ENDPOINT", config_data.get("custom_endpoint", ""))
+
 # App and Brain directory resolution
 DEFAULT_BRAIN_DIR = os.path.expanduser("~/.gemini/antigravity-ide/brain")
 if not os.path.exists(DEFAULT_BRAIN_DIR):

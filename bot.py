@@ -89,7 +89,15 @@ class DynamicModule(ModuleType):
             "active_pending_items", "START_TIME", "has_message_content", "dashboard_msg", 
             "dashboard_state", "IS_PAUSED", "PORT", "BRAIN_DIR", "REMOVER_DIR", 
             "MODEL_PROVIDER", "AUTO_SWITCH_LOCAL", "DISCORD_USER_ID", "DISCORD_BOT_TOKEN",
-            "notified_pending_keys"
+            "notified_pending_keys",
+            "CLAUDE_API_KEY", "CLAUDE_MODEL_NAME",
+            "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL_NAME",
+            "GROQ_API_KEY", "GROQ_MODEL_NAME",
+            "OPENROUTER_API_KEY", "OPENROUTER_MODEL_NAME",
+            "TOGETHER_API_KEY", "TOGETHER_MODEL_NAME",
+            "HF_API_KEY", "HF_MODEL_NAME",
+            "OPENAI_API_KEY", "OPENAI_MODEL_NAME",
+            "CUSTOM_API_KEY", "CUSTOM_MODEL_NAME", "CUSTOM_ENDPOINT"
         ]:
             setattr(state, name, value)
         else:
@@ -102,7 +110,15 @@ class DynamicModule(ModuleType):
                 "active_pending_items", "START_TIME", "has_message_content", "dashboard_msg", 
                 "dashboard_state", "IS_PAUSED", "PORT", "BRAIN_DIR", "REMOVER_DIR", 
                 "MODEL_PROVIDER", "AUTO_SWITCH_LOCAL", "DISCORD_USER_ID", "DISCORD_BOT_TOKEN",
-                "notified_pending_keys"
+                "notified_pending_keys",
+                "CLAUDE_API_KEY", "CLAUDE_MODEL_NAME",
+                "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL_NAME",
+                "GROQ_API_KEY", "GROQ_MODEL_NAME",
+                "OPENROUTER_API_KEY", "OPENROUTER_MODEL_NAME",
+                "TOGETHER_API_KEY", "TOGETHER_MODEL_NAME",
+                "HF_API_KEY", "HF_MODEL_NAME",
+                "OPENAI_API_KEY", "OPENAI_MODEL_NAME",
+                "CUSTOM_API_KEY", "CUSTOM_MODEL_NAME", "CUSTOM_ENDPOINT"
             ]:
                 if hasattr(state, name):
                     delattr(state, name)

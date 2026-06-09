@@ -133,6 +133,23 @@ class SettingsRequest(BaseModel):
     model_provider: str
     auto_switch_local: bool
     discord_bot_permissions: str
+    claude_api_key: Optional[str] = None
+    claude_model_name: Optional[str] = None
+    deepseek_api_key: Optional[str] = None
+    deepseek_model_name: Optional[str] = None
+    groq_api_key: Optional[str] = None
+    groq_model_name: Optional[str] = None
+    openrouter_api_key: Optional[str] = None
+    openrouter_model_name: Optional[str] = None
+    together_api_key: Optional[str] = None
+    together_model_name: Optional[str] = None
+    hf_api_key: Optional[str] = None
+    hf_model_name: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    openai_model_name: Optional[str] = None
+    custom_api_key: Optional[str] = None
+    custom_model_name: Optional[str] = None
+    custom_endpoint: Optional[str] = None
 
 def is_dangerous_command(command: str) -> bool:
     """
@@ -447,7 +464,23 @@ async def post_settings(req: SettingsRequest):
     state.MODEL_PROVIDER = req.model_provider
     state.AUTO_SWITCH_LOCAL = req.auto_switch_local
     state.DISCORD_BOT_PERMISSIONS = req.discord_bot_permissions
-    update_settings_in_env(req.model_provider, req.auto_switch_local, req.discord_bot_permissions)
+    
+    # Dynamically apply settings properties to state module
+    for key in [
+        "claude_api_key", "claude_model_name",
+        "deepseek_api_key", "deepseek_model_name",
+        "groq_api_key", "groq_model_name",
+        "openrouter_api_key", "openrouter_model_name",
+        "together_api_key", "together_model_name",
+        "hf_api_key", "hf_model_name",
+        "openai_api_key", "openai_model_name",
+        "custom_api_key", "custom_model_name", "custom_endpoint"
+    ]:
+        val = getattr(req, key)
+        if val is not None:
+            setattr(state, key.upper(), val)
+            
+    update_settings_in_env(req)
     print(f"[API] Settings updated: provider={state.MODEL_PROVIDER}, auto_switch={state.AUTO_SWITCH_LOCAL}, permissions={state.DISCORD_BOT_PERMISSIONS}")
     return {
         "status": "success", 
@@ -1151,14 +1184,15 @@ async def post_message(req: MessageRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to send Discord message: {e}")
 
-def update_settings_in_env(model_provider: str, auto_switch_local: bool, discord_bot_permissions: str):
+def update_settings_in_env(req: SettingsRequest):
     """
     Description:
-        Updates the config.json and .env files with the Model Provider, Auto Switch Local, and Bot Permissions settings.
+        Updates the config.json and .env files with the Model Provider, Auto Switch Local, Bot Permissions settings,
+        and all individual provider API keys, model names, and endpoints.
     Usage:
-        update_settings_in_env(model_provider, auto_switch_local, discord_bot_permissions)
+        update_settings_in_env(req)
     Usage Example:
-        update_settings_in_env("ollama", True, "8471182706732241")
+        update_settings_in_env(req)
     """
     # 1. Update config.json
     config_path = state.CONFIG_PATH
@@ -1167,50 +1201,69 @@ def update_settings_in_env(model_provider: str, auto_switch_local: bool, discord
         if os.path.exists(config_path):
             with open(config_path, "r") as f:
                 config_data = json.load(f)
-        config_data["model_provider"] = model_provider
-        config_data["auto_switch_local"] = auto_switch_local
-        config_data["discord_bot_permissions"] = discord_bot_permissions
+        config_data["model_provider"] = req.model_provider
+        config_data["auto_switch_local"] = req.auto_switch_local
+        config_data["discord_bot_permissions"] = req.discord_bot_permissions
+        
+        # Set all provider configs in config.json
+        for key in [
+            "claude_api_key", "claude_model_name",
+            "deepseek_api_key", "deepseek_model_name",
+            "groq_api_key", "groq_model_name",
+            "openrouter_api_key", "openrouter_model_name",
+            "together_api_key", "together_model_name",
+            "hf_api_key", "hf_model_name",
+            "openai_api_key", "openai_model_name",
+            "custom_api_key", "custom_model_name", "custom_endpoint"
+        ]:
+            val = getattr(req, key)
+            if val is not None:
+                config_data[key] = val
+                
         with open(config_path, "w") as f:
             json.dump(config_data, f, indent=2)
-        print(f"[Bot] Successfully updated config.json with model_provider={model_provider}, auto_switch_local={auto_switch_local}, discord_bot_permissions={discord_bot_permissions}")
+        print(f"[Bot] Successfully updated config.json with all provider settings")
     except Exception as e:
         print(f"[Bot] Failed to update config.json: {e}")
 
     # 2. Update .env file
     env_path = state.ENV_PATH
     try:
-        new_content = []
-        provider_found = False
-        autoswitch_found = False
-        permissions_found = False
-        
+        env_dict = {}
         if os.path.exists(env_path):
             with open(env_path, "r") as f:
-                lines = f.readlines()
-            for line in lines:
-                line_stripped = line.strip()
-                if line_stripped.startswith("MODEL_PROVIDER="):
-                    new_content.append(f"MODEL_PROVIDER={model_provider}")
-                    provider_found = True
-                elif line_stripped.startswith("AUTO_SWITCH_LOCAL="):
-                    new_content.append(f"AUTO_SWITCH_LOCAL={str(auto_switch_local)}")
-                    autoswitch_found = True
-                elif line_stripped.startswith("DISCORD_BOT_PERMISSIONS="):
-                    new_content.append(f"DISCORD_BOT_PERMISSIONS={discord_bot_permissions}")
-                    permissions_found = True
-                else:
-                    new_content.append(line.rstrip("\r\n"))
-                    
-        if not provider_found:
-            new_content.append(f"MODEL_PROVIDER={model_provider}")
-        if not autoswitch_found:
-            new_content.append(f"AUTO_SWITCH_LOCAL={str(auto_switch_local)}")
-        if not permissions_found:
-            new_content.append(f"DISCORD_BOT_PERMISSIONS={discord_bot_permissions}")
+                for line in f:
+                    line = line.strip()
+                    if line and "=" in line and not line.startswith("#"):
+                        k, v = line.split("=", 1)
+                        env_dict[k.strip()] = v.strip()
+                        
+        env_dict["MODEL_PROVIDER"] = req.model_provider
+        env_dict["AUTO_SWITCH_LOCAL"] = str(req.auto_switch_local)
+        env_dict["DISCORD_BOT_PERMISSIONS"] = req.discord_bot_permissions
+        
+        # Map to uppercase keys in .env
+        for key in [
+            "claude_api_key", "claude_model_name",
+            "deepseek_api_key", "deepseek_model_name",
+            "groq_api_key", "groq_model_name",
+            "openrouter_api_key", "openrouter_model_name",
+            "together_api_key", "together_model_name",
+            "hf_api_key", "hf_model_name",
+            "openai_api_key", "openai_model_name",
+            "custom_api_key", "custom_model_name", "custom_endpoint"
+        ]:
+            val = getattr(req, key)
+            if val is not None:
+                env_dict[key.upper()] = val
+                
+        new_lines = []
+        for k, v in env_dict.items():
+            new_lines.append(f"{k}={v}")
             
         with open(env_path, "w") as f:
-            f.write("\n".join(new_content) + "\n")
-        print(f"[Bot] Successfully updated .env file with MODEL_PROVIDER={model_provider}, AUTO_SWITCH_LOCAL={auto_switch_local}, DISCORD_BOT_PERMISSIONS={discord_bot_permissions}")
+            f.write("\n".join(new_lines) + "\n")
+        print(f"[Bot] Successfully updated .env file with all provider settings")
     except Exception as e:
         print(f"[Bot] Failed to update .env settings: {e}")
 
@@ -1662,6 +1715,45 @@ async def get_discord_target() -> Optional[discord.abc.Messageable]:
     return target
 
 
+def translate_claude_response_to_openai(claude_res: dict) -> dict:
+    """
+    Description:
+        Translates a non-streaming Anthropic Claude response to OpenAI chat completions format.
+    Usage:
+        openai_res = translate_claude_response_to_openai(claude_res)
+    Usage Example:
+        openai_res = translate_claude_response_to_openai({"content": [{"type": "text", "text": "Hi"}]})
+    """
+    choices = []
+    content_list = claude_res.get("content", [])
+    text_content = ""
+    for item in content_list:
+        if item.get("type") == "text":
+            text_content += item.get("text", "")
+            
+    choices.append({
+        "index": 0,
+        "message": {
+            "role": "assistant",
+            "content": text_content
+        },
+        "finish_reason": "stop" if claude_res.get("stop_reason") == "end_turn" else claude_res.get("stop_reason")
+    })
+    
+    return {
+        "id": claude_res.get("id", "chatcmpl-unknown"),
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": claude_res.get("model", "claude-3-5-sonnet-latest"),
+        "choices": choices,
+        "usage": {
+            "prompt_tokens": claude_res.get("usage", {}).get("input_tokens", 0),
+            "completion_tokens": claude_res.get("usage", {}).get("output_tokens", 0),
+            "total_tokens": claude_res.get("usage", {}).get("input_tokens", 0) + claude_res.get("usage", {}).get("output_tokens", 0)
+        }
+    }
+
+
 def resolve_target_and_payload(raw_request: dict) -> Tuple[str, dict, dict]:
     """
     Description:
@@ -1680,11 +1772,91 @@ def resolve_target_and_payload(raw_request: dict) -> Tuple[str, dict, dict]:
             target_url = f"{base_url}/chat/completions"
         else:
             target_url = base_url
-            
         payload = dict(raw_request)
         payload["model"] = state.LOCAL_MODEL_NAME
         
-    else:  # gemini or any other remote/custom
+    elif state.MODEL_PROVIDER == "claude":
+        target_url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": state.CLAUDE_API_KEY.strip() if state.CLAUDE_API_KEY else os.getenv("CLAUDE_API_KEY", ""),
+            "anthropic-version": "2023-06-01"
+        }
+        # Translate OpenAI messages to Anthropic messages
+        messages = []
+        system_prompt = ""
+        for m in raw_request.get("messages", []):
+            role = m.get("role")
+            content = m.get("content")
+            if role == "system":
+                system_prompt = content
+            else:
+                messages.append({"role": role, "content": content})
+        payload = {
+            "model": state.CLAUDE_MODEL_NAME or raw_request.get("model", "claude-3-5-sonnet-latest"),
+            "messages": messages,
+            "max_tokens": raw_request.get("max_tokens", 4096),
+            "stream": raw_request.get("stream", False)
+        }
+        if system_prompt:
+            payload["system"] = system_prompt
+            
+    elif state.MODEL_PROVIDER == "deepseek":
+        target_url = "https://api.deepseek.com/v1/chat/completions"
+        api_key = state.DEEPSEEK_API_KEY.strip() if state.DEEPSEEK_API_KEY else os.getenv("DEEPSEEK_API_KEY", "")
+        headers["Authorization"] = f"Bearer {api_key}"
+        payload = dict(raw_request)
+        payload["model"] = state.DEEPSEEK_MODEL_NAME or "deepseek-chat"
+        
+    elif state.MODEL_PROVIDER == "groq":
+        target_url = "https://api.groq.com/openai/v1/chat/completions"
+        api_key = state.GROQ_API_KEY.strip() if state.GROQ_API_KEY else os.getenv("GROQ_API_KEY", "")
+        headers["Authorization"] = f"Bearer {api_key}"
+        payload = dict(raw_request)
+        payload["model"] = state.GROQ_MODEL_NAME or "llama3-8b-8192"
+        
+    elif state.MODEL_PROVIDER == "openrouter":
+        target_url = "https://openrouter.ai/api/v1/chat/completions"
+        api_key = state.OPENROUTER_API_KEY.strip() if state.OPENROUTER_API_KEY else os.getenv("OPENROUTER_API_KEY", "")
+        headers["Authorization"] = f"Bearer {api_key}"
+        headers["HTTP-Referer"] = "https://github.com/LKirkend/Discord-Agent"
+        headers["X-Title"] = "Discord-Agent"
+        payload = dict(raw_request)
+        payload["model"] = state.OPENROUTER_MODEL_NAME or "meta-llama/llama-3-8b-instruct:free"
+        
+    elif state.MODEL_PROVIDER == "together":
+        target_url = "https://api.together.xyz/v1/chat/completions"
+        api_key = state.TOGETHER_API_KEY.strip() if state.TOGETHER_API_KEY else os.getenv("TOGETHER_API_KEY", "")
+        headers["Authorization"] = f"Bearer {api_key}"
+        payload = dict(raw_request)
+        payload["model"] = state.TOGETHER_MODEL_NAME or "meta-llama/Llama-3-8b-chat-hf"
+        
+    elif state.MODEL_PROVIDER == "huggingface":
+        target_url = "https://api-inference.huggingface.co/v1/chat/completions"
+        api_key = state.HF_API_KEY.strip() if state.HF_API_KEY else os.getenv("HF_API_KEY", "")
+        headers["Authorization"] = f"Bearer {api_key}"
+        payload = dict(raw_request)
+        payload["model"] = state.HF_MODEL_NAME or "meta-llama/Meta-Llama-3-8B-Instruct"
+        
+    elif state.MODEL_PROVIDER == "openai":
+        target_url = "https://api.openai.com/v1/chat/completions"
+        api_key = state.OPENAI_API_KEY.strip() if state.OPENAI_API_KEY else os.getenv("OPENAI_API_KEY", "")
+        headers["Authorization"] = f"Bearer {api_key}"
+        payload = dict(raw_request)
+        payload["model"] = state.OPENAI_MODEL_NAME or "gpt-4o"
+        
+    elif state.MODEL_PROVIDER == "custom":
+        target_url = state.CUSTOM_ENDPOINT.strip() if state.CUSTOM_ENDPOINT else ""
+        if target_url and not target_url.endswith("/chat/completions"):
+            target_url = f"{target_url.rstrip('/')}/chat/completions"
+        api_key = state.CUSTOM_API_KEY.strip() if state.CUSTOM_API_KEY else os.getenv("CUSTOM_API_KEY", "")
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        payload = dict(raw_request)
+        if state.CUSTOM_MODEL_NAME:
+            payload["model"] = state.CUSTOM_MODEL_NAME
+            
+    else:  # gemini default
         remote_base = state.REMOTE_ENDPOINT.strip() if state.REMOTE_ENDPOINT else "https://generativelanguage.googleapis.com/v1beta/openai"
         remote_base = remote_base.rstrip("/")
         if not remote_base.endswith("/chat/completions"):
@@ -1828,27 +2000,78 @@ async def chat_completions(raw_request: dict, request: Request):
                             return
                         
                         buffer = ""
-                        async for chunk in response.aiter_bytes():
-                            yield chunk
-                            
-                            buffer += chunk.decode("utf-8", errors="ignore")
-                            while "\n" in buffer:
-                                line, buffer = buffer.split("\n", 1)
-                                line = line.strip()
-                                if line.startswith("data:"):
-                                    data_content = line[5:].strip()
-                                    if data_content == "[DONE]":
-                                        continue
-                                    try:
-                                        parsed = json.loads(data_content)
-                                        choices = parsed.get("choices", [])
-                                        if choices:
-                                            delta = choices[0].get("delta", {})
-                                            content = delta.get("content")
-                                            if content:
-                                                accumulated_content.append(content)
-                                    except Exception:
-                                        pass
+                        if state.MODEL_PROVIDER == "claude":
+                            async for chunk in response.aiter_bytes():
+                                buffer += chunk.decode("utf-8", errors="ignore")
+                                while "\n\n" in buffer:
+                                    block, buffer = buffer.split("\n\n", 1)
+                                    event_type = None
+                                    data_body = None
+                                    for line in block.split("\n"):
+                                        line = line.strip()
+                                        if line.startswith("event:"):
+                                            event_type = line[6:].strip()
+                                        elif line.startswith("data:"):
+                                            data_body = line[5:].strip()
+                                    
+                                    if data_body and data_body != "[DONE]":
+                                        try:
+                                            parsed = json.loads(data_body)
+                                            if event_type == "content_block_delta":
+                                                delta_text = parsed.get("delta", {}).get("text", "")
+                                                if delta_text:
+                                                    accumulated_content.append(delta_text)
+                                                    openai_chunk = {
+                                                        "id": "chatcmpl-claude",
+                                                        "object": "chat.completion.chunk",
+                                                        "created": int(time.time()),
+                                                        "model": payload.get("model", "claude-3-5-sonnet-latest"),
+                                                        "choices": [{
+                                                            "index": 0,
+                                                            "delta": {"content": delta_text},
+                                                            "finish_reason": None
+                                                        }]
+                                                    }
+                                                    yield f"data: {json.dumps(openai_chunk)}\n\n".encode("utf-8")
+                                            elif event_type == "message_delta":
+                                                stop_reason = parsed.get("delta", {}).get("stop_reason")
+                                                openai_chunk = {
+                                                    "id": "chatcmpl-claude",
+                                                    "object": "chat.completion.chunk",
+                                                    "created": int(time.time()),
+                                                    "model": payload.get("model", "claude-3-5-sonnet-latest"),
+                                                    "choices": [{
+                                                        "index": 0,
+                                                        "delta": {},
+                                                        "finish_reason": "stop" if stop_reason == "end_turn" else stop_reason
+                                                    }]
+                                                }
+                                                yield f"data: {json.dumps(openai_chunk)}\n\n".encode("utf-8")
+                                        except Exception:
+                                            pass
+                            yield b"data: [DONE]\n\n"
+                        else:
+                            async for chunk in response.aiter_bytes():
+                                yield chunk
+                                
+                                buffer += chunk.decode("utf-8", errors="ignore")
+                                while "\n" in buffer:
+                                    line, buffer = buffer.split("\n", 1)
+                                    line = line.strip()
+                                    if line.startswith("data:"):
+                                        data_content = line[5:].strip()
+                                        if data_content == "[DONE]":
+                                            continue
+                                        try:
+                                            parsed = json.loads(data_content)
+                                            choices = parsed.get("choices", [])
+                                            if choices:
+                                                delta = choices[0].get("delta", {})
+                                                content = delta.get("content")
+                                                if content:
+                                                    accumulated_content.append(content)
+                                        except Exception:
+                                            pass
                 except Exception as e:
                     yield f"data: {json.dumps({'error': str(e)})}\n\n".encode("utf-8")
                 finally:
@@ -1863,17 +2086,27 @@ async def chat_completions(raw_request: dict, request: Request):
         async with httpx.AsyncClient(timeout=60.0) as client:
             try:
                 response = await client.post(target_url, json=payload, headers=headers)
-                res_data = response.json()
-                
-                # Try to extract message content to notify Discord
-                choices = res_data.get("choices", [])
-                if choices:
-                    message = choices[0].get("message", {})
-                    content = message.get("content", "")
-                    if content:
-                        asyncio.create_task(send_response_to_discord(convo_id, content))
+                if response.status_code == 200:
+                    res_data = response.json()
+                    
+                    if state.MODEL_PROVIDER == "claude":
+                        res_data = translate_claude_response_to_openai(res_data)
                         
-                return JSONResponse(content=res_data, status_code=response.status_code)
+                    # Try to extract message content to notify Discord
+                    choices = res_data.get("choices", [])
+                    if choices:
+                        message = choices[0].get("message", {})
+                        content = message.get("content", "")
+                        if content:
+                            asyncio.create_task(send_response_to_discord(convo_id, content))
+                            
+                    return JSONResponse(content=res_data, status_code=200)
+                else:
+                    try:
+                        res_data = response.json()
+                    except Exception:
+                        res_data = {"error": response.text}
+                    return JSONResponse(content=res_data, status_code=response.status_code)
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed to communicate with LLM provider: {e}")
 
@@ -1917,6 +2150,47 @@ async def list_models():
             ]
         }
     else:
+        model_id = None
+        owned_by = None
+        
+        if state.MODEL_PROVIDER == "claude":
+            model_id = state.CLAUDE_MODEL_NAME or "claude-3-5-sonnet-latest"
+            owned_by = "anthropic"
+        elif state.MODEL_PROVIDER == "deepseek":
+            model_id = state.DEEPSEEK_MODEL_NAME or "deepseek-chat"
+            owned_by = "deepseek"
+        elif state.MODEL_PROVIDER == "groq":
+            model_id = state.GROQ_MODEL_NAME or "llama3-8b-8192"
+            owned_by = "groq"
+        elif state.MODEL_PROVIDER == "openrouter":
+            model_id = state.OPENROUTER_MODEL_NAME or "meta-llama/llama-3-8b-instruct:free"
+            owned_by = "openrouter"
+        elif state.MODEL_PROVIDER == "together":
+            model_id = state.TOGETHER_MODEL_NAME or "meta-llama/Llama-3-8b-chat-hf"
+            owned_by = "together"
+        elif state.MODEL_PROVIDER == "huggingface":
+            model_id = state.HF_MODEL_NAME or "meta-llama/Meta-Llama-3-8B-Instruct"
+            owned_by = "huggingface"
+        elif state.MODEL_PROVIDER == "openai":
+            model_id = state.OPENAI_MODEL_NAME or "gpt-4o"
+            owned_by = "openai"
+        elif state.MODEL_PROVIDER == "custom":
+            model_id = state.CUSTOM_MODEL_NAME or "custom-model"
+            owned_by = "custom"
+            
+        if model_id and owned_by:
+            return {
+                "object": "list",
+                "data": [
+                    {
+                        "id": model_id,
+                        "object": "model",
+                        "created": created_time,
+                        "owned_by": owned_by
+                    }
+                ]
+            }
+            
         return {
             "object": "list",
             "data": [
