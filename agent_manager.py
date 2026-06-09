@@ -316,7 +316,7 @@ class OllamaAgent:
         from discord_policy import check_persistent_permission, discord_approval_handler
 
         while True:
-            url = f"{state.LOCAL_ENDPOINT}/chat/completions"
+            url = f"{state.AGENT_ENDPOINT}/chat/completions"
             headers = {"Content-Type": "application/json"}
             data = {
                 "model": state.LOCAL_MODEL_NAME,

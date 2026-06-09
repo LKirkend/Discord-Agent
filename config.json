@@ -2,9 +2,10 @@
   "model_provider": "gemini",
   "auto_switch_local": false,
   "discord_bot_permissions": "8471182706732241",
-  "local_endpoint": "http://localhost:11434/v1",
-  "local_model_name": "qwen2.5-coder:7b",
-  "remote_endpoint": "",
-  "remote_api_key": "",
+  "agent_endpoint": "http://localhost:11434/v1",
+  "agent_api_key": "",
+  "agent_model_name": "qwen2.5-coder:7b",
+  "forward_endpoint": "",
+  "forward_api_key": "",
   "port": 18000
 }

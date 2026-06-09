@@ -150,6 +150,10 @@ class SettingsRequest(BaseModel):
     custom_api_key: Optional[str] = None
     custom_model_name: Optional[str] = None
     custom_endpoint: Optional[str] = None
+    agent_endpoint: Optional[str] = None
+    forward_endpoint: Optional[str] = None
+    agent_api_key: Optional[str] = None
+    forward_api_key: Optional[str] = None
 
 def is_dangerous_command(command: str) -> bool:
     """
@@ -474,7 +478,8 @@ async def post_settings(req: SettingsRequest):
         "together_api_key", "together_model_name",
         "hf_api_key", "hf_model_name",
         "openai_api_key", "openai_model_name",
-        "custom_api_key", "custom_model_name", "custom_endpoint"
+        "custom_api_key", "custom_model_name", "custom_endpoint",
+        "agent_endpoint", "forward_endpoint", "agent_api_key", "forward_api_key"
     ]:
         val = getattr(req, key)
         if val is not None:
@@ -1214,7 +1219,8 @@ def update_settings_in_env(req: SettingsRequest):
             "together_api_key", "together_model_name",
             "hf_api_key", "hf_model_name",
             "openai_api_key", "openai_model_name",
-            "custom_api_key", "custom_model_name", "custom_endpoint"
+            "custom_api_key", "custom_model_name", "custom_endpoint",
+            "agent_endpoint", "forward_endpoint", "agent_api_key", "forward_api_key"
         ]:
             val = getattr(req, key)
             if val is not None:
@@ -1251,7 +1257,8 @@ def update_settings_in_env(req: SettingsRequest):
             "together_api_key", "together_model_name",
             "hf_api_key", "hf_model_name",
             "openai_api_key", "openai_model_name",
-            "custom_api_key", "custom_model_name", "custom_endpoint"
+            "custom_api_key", "custom_model_name", "custom_endpoint",
+            "agent_endpoint", "forward_endpoint", "agent_api_key", "forward_api_key"
         ]:
             val = getattr(req, key)
             if val is not None:
@@ -1767,7 +1774,7 @@ def resolve_target_and_payload(raw_request: dict) -> Tuple[str, dict, dict]:
     headers = {"Content-Type": "application/json"}
     
     if state.MODEL_PROVIDER == "ollama":
-        base_url = state.LOCAL_ENDPOINT.rstrip("/")
+        base_url = state.AGENT_ENDPOINT.rstrip("/")
         if not base_url.endswith("/chat/completions"):
             target_url = f"{base_url}/chat/completions"
         else:
@@ -2124,7 +2131,7 @@ async def list_models():
     created_time = int(time.time())
     
     if state.MODEL_PROVIDER == "ollama":
-        base_url = state.LOCAL_ENDPOINT.rstrip("/")
+        base_url = state.AGENT_ENDPOINT.rstrip("/")
         if base_url.endswith("/v1"):
             models_url = f"{base_url}/models"
         else:

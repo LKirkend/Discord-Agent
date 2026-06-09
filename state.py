@@ -55,11 +55,12 @@ else:
 
 DISCORD_BOT_PERMISSIONS = os.getenv("DISCORD_BOT_PERMISSIONS", config_data.get("discord_bot_permissions", "8471182706732241"))
 
-# Local & Remote Endpoint Configurations
-LOCAL_ENDPOINT = os.getenv("LOCAL_ENDPOINT", config_data.get("local_endpoint", "http://localhost:11434/v1"))
+# Local & Remote Endpoint Configurations (Renamed to Agent & Forward Endpoints)
+AGENT_ENDPOINT = os.getenv("AGENT_ENDPOINT", os.getenv("LOCAL_ENDPOINT", config_data.get("agent_endpoint", config_data.get("local_endpoint", "http://localhost:11434/v1"))))
 LOCAL_MODEL_NAME = os.getenv("LOCAL_MODEL_NAME", config_data.get("local_model_name", "qwen2.5-coder:7b"))
-REMOTE_ENDPOINT = os.getenv("REMOTE_ENDPOINT", config_data.get("remote_endpoint", ""))
-REMOTE_API_KEY = os.getenv("REMOTE_API_KEY", config_data.get("remote_api_key", ""))
+FORWARD_ENDPOINT = os.getenv("FORWARD_ENDPOINT", os.getenv("REMOTE_ENDPOINT", config_data.get("forward_endpoint", config_data.get("remote_endpoint", ""))))
+FORWARD_API_KEY = os.getenv("FORWARD_API_KEY", os.getenv("REMOTE_API_KEY", config_data.get("forward_api_key", config_data.get("remote_api_key", ""))))
+AGENT_API_KEY = os.getenv("AGENT_API_KEY", config_data.get("agent_api_key", ""))
 
 # Provider Specific Configurations
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", config_data.get("claude_api_key", ""))

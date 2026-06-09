@@ -1673,7 +1673,7 @@ class TestDiscordApprovalServer(unittest.TestCase):
 
         # Configure state
         bot.state.MODEL_PROVIDER = "ollama"
-        bot.state.LOCAL_ENDPOINT = "http://localhost:11434/v1"
+        bot.state.AGENT_ENDPOINT = "http://localhost:11434/v1"
         bot.state.LOCAL_MODEL_NAME = "qwen2.5-coder:7b"
 
         # Make request
@@ -1774,7 +1774,7 @@ class TestDiscordApprovalServer(unittest.TestCase):
 
         # 1. Test Ollama mode
         bot.state.MODEL_PROVIDER = "ollama"
-        bot.state.LOCAL_ENDPOINT = "http://localhost:11434/v1"
+        bot.state.AGENT_ENDPOINT = "http://localhost:11434/v1"
         response = client.get("/v1/models")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"][0]["id"], "qwen2.5-coder:7b")
