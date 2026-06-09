@@ -1522,7 +1522,14 @@ class TestDiscordApprovalServer(unittest.TestCase):
     @patch("bot.bot")
     @patch("bot.DISCORD_USER_ID", "12345")
     async def _test_update_dashboard_new_pin_async(self, mock_bot):
-        """Test that update_dashboard sends and pins a new dashboard if none exists."""
+        """
+        Description:
+            Test that update_dashboard sends and pins a new dashboard if none exists.
+        Usage:
+            await self._test_update_dashboard_new_pin_async(mock_bot)
+        Usage Example:
+            await self._test_update_dashboard_new_pin_async(mock_bot)
+        """
         mock_bot.is_ready.return_value = True
         
         mock_user = MagicMock()
@@ -1556,6 +1563,7 @@ class TestDiscordApprovalServer(unittest.TestCase):
         fut_send = self.loop.create_future()
         fut_send.set_result(mock_dashboard_msg)
         mock_user.send = MagicMock(return_value=fut_send)
+        mock_dm_channel.send = mock_user.send
         
         bot.dashboard_msg = None
         
@@ -1827,6 +1835,7 @@ class TestDiscordApprovalServer(unittest.TestCase):
         mock_msg_server.author.bot = False
         mock_msg_server.author.id = 12345
         mock_msg_server.guild = MagicMock()
+        mock_msg_server.channel.name = "agent-discussion"
         mock_msg_server.content = "Build something"
         
         mock_thread = MagicMock()

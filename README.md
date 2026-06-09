@@ -120,10 +120,11 @@ When your client makes completions calls (e.g. to `http://localhost:18000/v1/cha
 To use the bot inside a Discord server (instead of just DMs):
 1. **Invite the Bot**: Ensure the bot is added to your server with permissions to read/write messages, create public threads, and manage messages.
 2. **Setup Channels (Optional but Recommended)**:
+   - Create a text channel named `#agent-discussion`. The bot will restrict all message processing, command execution, and thread creation to only occur inside this channel (or sub-threads parented by it) when running inside a Discord server.
    - Create a text channel named `#agent-updates`. The bot will automatically detect this channel and route all live agent activity, tool approvals, and logs here instead of spamming your DMs.
    - Create a text channel named `#agent-dashboard`. The bot will maintain and update a single pinned dashboard message here to track all running agent sessions.
 3. **Conversational Threads**:
-   - Simply send a message in any server text channel that the bot has access to (e.g., `Build a python script`).
+   - Send a prompt in the `#agent-discussion` channel (e.g., `Build a python script`).
    - If you are the registered user (`DISCORD_USER_ID`), the bot will automatically spawn a dedicated thread (e.g., `🤖 session-a1b2c3d4`) and run the agent inside it.
    - Any further replies inside that thread will continue the conversation turn with that specific agent.
 

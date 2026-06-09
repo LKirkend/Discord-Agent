@@ -147,7 +147,12 @@ async def dashboard_updater():
 async def transcript_monitor():
     """
     Description:
-        Background loop task to monitor active agent transcripts.
+        Background loop task to monitor active agent transcripts and route updates to #agent-updates or DMs.
+    Usage:
+        transcript_monitor.start()
+    Usage Example:
+        if not transcript_monitor.is_running():
+            transcript_monitor.start()
     """
     global last_processed_steps, notified_plan_sessions
     if not state.bot or not state.bot.is_ready() or not os.getenv("DISCORD_USER_ID"):
@@ -188,30 +193,31 @@ async def transcript_monitor():
                         meta = json.load(f)
                     if meta.get("requestFeedback") is True:
                         if c_id not in notified_plan_sessions:
-                            user = await state.bot.fetch_user(int(DISCORD_USER_ID))
-                            embed = discord.Embed(
-                                title="📝 Implementation Plan Ready for Review",
-                                description=f"Agent in session `{c_id[:8]}` has generated an implementation plan for your approval.",
-                                color=discord.Color.from_rgb(245, 158, 11),
-                                timestamp=datetime.datetime.now(datetime.timezone.utc)
-                            )
-                            embed.add_field(name="💼 Project", value=f"`{get_session_project(c_id)}`", inline=True)
-                            embed.add_field(name="💬 Session ID", value=f"`{c_id[:8]}`", inline=True)
-                            embed.add_field(name="📋 Summary", value=meta.get("summary", "No summary provided"), inline=False)
-                            
-                            file_to_attach = None
-                            if os.path.exists(p_path) and os.path.isfile(p_path):
-                                file_to_attach = discord.File(p_path, filename=os.path.basename(p_path))
-                            
-                            view = DiscordPlanApprovalView(convo_id=c_id, metadata_path=m_path, plan_path=p_path)
-                            await user.send(
-                                content=f"<@{DISCORD_USER_ID}> ⚠️ **Plan Approval Required!**",
-                                embed=embed,
-                                view=view,
-                                file=file_to_attach
-                            )
-                            
-                            notified_plan_sessions.add(c_id)
+                            target = await web_server.get_discord_target()
+                            if target:
+                                embed = discord.Embed(
+                                    title="📝 Implementation Plan Ready for Review",
+                                    description=f"Agent in session `{c_id[:8]}` has generated an implementation plan for your approval.",
+                                    color=discord.Color.from_rgb(245, 158, 11),
+                                    timestamp=datetime.datetime.now(datetime.timezone.utc)
+                                )
+                                embed.add_field(name="💼 Project", value=f"`{get_session_project(c_id)}`", inline=True)
+                                embed.add_field(name="💬 Session ID", value=f"`{c_id[:8]}`", inline=True)
+                                embed.add_field(name="📋 Summary", value=meta.get("summary", "No summary provided"), inline=False)
+                                
+                                file_to_attach = None
+                                if os.path.exists(p_path) and os.path.isfile(p_path):
+                                    file_to_attach = discord.File(p_path, filename=os.path.basename(p_path))
+                                
+                                view = DiscordPlanApprovalView(convo_id=c_id, metadata_path=m_path, plan_path=p_path)
+                                await target.send(
+                                    content=f"<@{DISCORD_USER_ID}> ⚠️ **Plan Approval Required!**",
+                                    embed=embed,
+                                    view=view,
+                                    file=file_to_attach
+                                )
+                                
+                                notified_plan_sessions.add(c_id)
                 except Exception as plan_err:
                     print(f"[Transcript Monitor] Error checking plan for {c_id[:8]}: {plan_err}")
             
@@ -265,45 +271,51 @@ async def transcript_monitor():
                     continue
                     
             if new_steps:
-                user = await state.bot.fetch_user(int(DISCORD_USER_ID))
-                dm_channel = user.dm_channel or await user.create_dm()
-                
-                last_msg = None
-                try:
-                    async for msg in dm_channel.history(limit=5):
-                        if msg.author == state.bot.user:
-                            last_msg = msg
-                            break
-                except Exception as e:
-                    print(f"[Transcript Monitor] Failed to fetch DM history: {e}")
-                
-                for step in new_steps:
-                    content = step.get('content', '').strip()
-                    if not content:
-                        continue
-                    seen_paths = set()
-                    content, content_files = extract_and_prepare_files(content, seen_paths)
+                target = await web_server.get_discord_target()
+                if target:
+                    history_channel = target
+                    if hasattr(target, "dm_channel"):
+                        try:
+                            history_channel = target.dm_channel or await target.create_dm()
+                        except Exception as dm_err:
+                            print(f"[Transcript Monitor] Error resolving target DM channel for history: {dm_err}")
                     
-                    prefix = f"💬 **[Agent `{convo_id[:8]}`]**"
-                    if not content_files and last_msg and last_msg.content.startswith(prefix):
-                        potential_content = last_msg.content + "\n\n" + content
-                        if len(potential_content) <= 1950:
-                            try:
-                                await last_msg.edit(content=potential_content)
-                                last_msg.content = potential_content
-                                continue
-                            except Exception:
-                                pass
+                    last_msg = None
+                    try:
+                        async for msg in history_channel.history(limit=5):
+                            if msg.author == state.bot.user:
+                                last_msg = msg
+                                break
+                    except Exception as e:
+                        print(f"[Transcript Monitor] Failed to fetch history: {e}")
                     
-                    msg_to_send = f"{prefix}\n{content}"
-                    if len(msg_to_send) > 1900:
-                        chunks = [msg_to_send[i:i+1900] for i in range(0, len(msg_to_send), 1900)]
-                        last_msg = await user.send(chunks[0], files=content_files if content_files else None)
-                        for chunk in chunks[1:]:
-                            last_msg = await user.send(chunk)
-                    else:
-                        last_msg = await user.send(msg_to_send, files=content_files if content_files else None)
+                    for step in new_steps:
+                        content = step.get('content', '').strip()
+                        if not content:
+                            continue
+                        seen_paths = set()
+                        content, content_files = extract_and_prepare_files(content, seen_paths)
                         
+                        prefix = f"💬 **[Agent `{convo_id[:8]}`]**"
+                        if not content_files and last_msg and last_msg.content.startswith(prefix):
+                            potential_content = last_msg.content + "\n\n" + content
+                            if len(potential_content) <= 1950:
+                                try:
+                                    await last_msg.edit(content=potential_content)
+                                    last_msg.content = potential_content
+                                    continue
+                                except Exception:
+                                    pass
+                        
+                        msg_to_send = f"{prefix}\n{content}"
+                        if len(msg_to_send) > 1900:
+                            chunks = [msg_to_send[i:i+1900] for i in range(0, len(msg_to_send), 1900)]
+                            last_msg = await target.send(chunks[0], files=content_files if content_files else None)
+                            for chunk in chunks[1:]:
+                                last_msg = await target.send(chunk)
+                        else:
+                            last_msg = await target.send(msg_to_send, files=content_files if content_files else None)
+                            
             if max_step_in_file > last_idx:
                 last_processed_steps[convo_id] = max_step_in_file
     except Exception as e:
@@ -746,10 +758,21 @@ async def update_dashboard():
         DISCORD_USER_ID = os.getenv("DISCORD_USER_ID")
         user = await state.bot.fetch_user(int(DISCORD_USER_ID))
         
-        dm_channel = user.dm_channel or await user.create_dm()
+        # Check for #agent-dashboard channel first in any guild
+        dashboard_channel = None
+        for guild in state.bot.guilds:
+            for chan in guild.text_channels:
+                if chan.name == "agent-dashboard" and chan.permissions_for(guild.me).send_messages:
+                    dashboard_channel = chan
+                    break
+            if dashboard_channel:
+                break
+                
+        target_channel = dashboard_channel if dashboard_channel else (user.dm_channel or await user.create_dm())
+        
         pinned_messages = []
         try:
-            pinned_messages = await dm_channel.pins()
+            pinned_messages = await target_channel.pins()
         except Exception as pin_err:
             print(f"[Dashboard] Error fetching pinned messages: {pin_err}")
 
@@ -784,10 +807,10 @@ async def update_dashboard():
                     state.dashboard_msg = pinned_dashboard
                     await state.dashboard_msg.edit(embed=embed, view=view)
                 else:
-                    state.dashboard_msg = await user.send(embed=embed, view=view)
+                    state.dashboard_msg = await target_channel.send(embed=embed, view=view)
                     is_new_msg = True
         else:
-            state.dashboard_msg = await user.send(embed=embed, view=view)
+            state.dashboard_msg = await target_channel.send(embed=embed, view=view)
             is_new_msg = True
 
         if is_new_msg:
@@ -798,7 +821,7 @@ async def update_dashboard():
                 print(f"[Dashboard] Error pinning dashboard: {pin_err}")
                 
         try:
-            async for msg in dm_channel.history(limit=100):
+            async for msg in target_channel.history(limit=100):
                 if msg.author.id == state.bot.user.id and msg.embeds:
                     title = msg.embeds[0].title or ""
                     if isinstance(title, str) and ("Multi-Agent System Dashboard" in title or title.startswith("📁 Project:")):
@@ -872,6 +895,19 @@ def create_bot(use_message_content: bool):
         """
         if message.author.bot:
             return
+
+        # Restrict guild message processing: channel name must be "agent-discussion" or a thread parented by it
+        if message.guild is not None:
+            is_discussion = False
+            if isinstance(message.channel, discord.Thread):
+                parent_channel = message.channel.parent
+                if parent_channel and parent_channel.name == "agent-discussion":
+                    is_discussion = True
+            elif message.channel.name == "agent-discussion":
+                is_discussion = True
+            
+            if not is_discussion:
+                return
 
         DISCORD_USER_NAME = os.getenv("DISCORD_USER_NAME")
         if DISCORD_USER_NAME and message.author.name.lower() == DISCORD_USER_NAME.lower():
