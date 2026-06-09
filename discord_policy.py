@@ -1,11 +1,24 @@
-import httpx
+import sys
+import glob
 import os
+
+# Dynamically locate the site-packages inside the local .venv of the root workspace
+venv_lib_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".venv/lib")
+if os.path.exists(venv_lib_dir):
+    for d in glob.glob(os.path.join(venv_lib_dir, "python3.*/site-packages")):
+        if d not in sys.path:
+            sys.path.insert(0, d)
+
+# pyrefly: ignore [missing-import]
+import httpx
 import uuid
 import json
 import re
 from typing import Dict, Any, List
 
+# pyrefly: ignore [missing-import]
 from google.antigravity import types
+# pyrefly: ignore [missing-import]
 from google.antigravity.hooks import hooks, policy
 
 # Target URL for the local Discord bot server
@@ -40,7 +53,7 @@ def resolve_sidecar_port() -> str:
                 if response.status == 200:
                     data = json.loads(response.read().decode())
                     for s in data.get("sidecars", []):
-                        if s.get("sidecarId") == "discord-liaison":
+                        if s.get("sidecarId") in ["discord-liaison-ide", "discord-liaison"]:
                             web_port = s.get("webPort")
                             if web_port:
                                 _resolved_port_cache = str(web_port)
@@ -250,7 +263,7 @@ class DiscordInteractionHook(hooks.OnInteractionHook):
             print(f"[Discord Policy] ❌ Interaction connection error: {e}")
             return types.QuestionHookResult(responses=[types.QuestionResponse(skipped=True)], cancelled=True)
 
-# Tools that require Discord approval when not pre-approved in native settings
+# Tools that require Discord approval when not pre-approved in IDE settings
 _APPROVAL_TOOLS = [
     "run_command",
     "create_file",
@@ -267,9 +280,9 @@ _APPROVAL_TOOLS = [
 def _make_allow_predicate(tool_name: str):
     """
     Returns a predicate function compatible with policy.allow(when=...) that
-    returns True when the tool call is already approved in the native
-    permission settings (global ~/.gemini/antigravity/permissions.json,
-    workspace .antigravity_permissions.json, or the IDE global file).
+    returns True when the tool call is already approved in the IDE's native
+    permission settings (global ~/.gemini/antigravity-ide/permissions.json,
+    workspace .antigravity_permissions.json, or the AGY2 global file).
 
     Using policy.allow(when=predicate) rather than checking inside the
     discord_approval_handler ensures the native policy engine short-circuits
@@ -296,18 +309,19 @@ def get_discord_policies():
     Helper function to return the policy configuration list for the agent config.
 
     Policy evaluation order (highest priority first):
-    1. policy.allow(tool, when=natively_approved)  — Auto-approve if already in
-       saved native settings. No Discord ping, no dialog, fully transparent.
+    1. policy.allow(tool, when=natively_approved)  — Auto-approve if already in IDE
+       saved settings. No Discord ping, no dialog, fully transparent.
     2. policy.ask_user(tool, handler=discord_approval_handler)  — Route to Discord
        for anything not already pre-approved.
 
-    This ensures Discord acts as a supplement to the native permission
+    This ensures Discord acts as a supplement to the IDE's native permission
     system, not a replacement for it.
     """
+    # pyrefly: ignore [missing-import]
     from google.antigravity.hooks import policy
     policies = []
     for tool in _APPROVAL_TOOLS:
-        # High-priority: auto-approve if in native permission settings
+        # High-priority: auto-approve if in native IDE permission settings
         policies.append(
             policy.allow(tool, when=_make_allow_predicate(tool),
                          name=f"native-pre-approved-{tool}")

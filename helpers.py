@@ -615,68 +615,124 @@ def get_agent_emoji(goal_name: str, index: int = 0) -> str:
     h = hash(goal_name + str(index))
     return emojis[h % len(emojis)]
 
+# Cache for resolved project names to avoid re-scanning on every dashboard refresh
+_project_cache: Dict[str, str] = {}
+
+# Friendly name mapping for resolved folder names
+PROJECT_MAP = {
+    "jolly-lavoisier": "Discord-Agent",
+    "Discord-Agent": "Discord-Agent",
+    "discord-agent": "Discord-Agent",
+    "CorrelationEngine": "DeCorrelationEngine",
+    "Correlation-Engine": "DeCorrelationEngine",
+    "DeCorrelationEngine": "DeCorrelationEngine",
+    "research-stem-splitting-models": "OpenFeedbackRemover",
+    "OpenFeedbackRemover": "OpenFeedbackRemover",
+    "antigravity": "antigravity",
+}
+
+# Folders to exclude from project matching — infrastructure dirs, not projects
+_EXCLUDED_FOLDERS = frozenset([
+    "worktrees", "brain", "config", "logs", "plugins", "sidecars", "run",
+    "ide", "agy2", ".gemini", ".git", ".venv", "__pycache__",
+])
+
+# System folders to ignore when matching /Users/<user>/<folder>
+_EXCLUDED_USER_FOLDERS = frozenset([
+    "Applications", "Library", "Documents", "Downloads", "Desktop",
+    "Pictures", "config", "Brain", ".gemini",
+])
+
+# Regex patterns for extracting project folder candidates from transcript lines
+_RE_WORKTREE = re.compile(r'/antigravity/worktrees/([^/\"\\\'\s\)]+)')
+_RE_ANTI_SUB = re.compile(r'/antigravity/([^/\"\\\'\s\)]+)')
+_RE_DOCS_ANTI = re.compile(r'/Documents/antigravity/([^/\"\\\'\s\)]+)')
+
 def get_session_project(convo_id: str) -> str:
     """
     Description:
-        Resolves the project name for a given conversation by checking metadata
-        or scanning the conversation transcript using path regex matches.
+        Resolves the project name for a given conversation by scanning the
+        transcript using frequency-weighted voting across the first 200 lines.
+        Results are cached to avoid re-scanning on every dashboard refresh.
+
+        The algorithm counts occurrences of candidate project folder paths,
+        weighting USER_INPUT lines and tool_call arguments (TargetFile, Cwd,
+        SearchPath) at 3x compared to ambient metadata mentions at 1x. The
+        ADDITIONAL_METADATA block on line 1 (which lists the user's open
+        editor tabs, NOT the session's target project) is explicitly skipped.
+
     Usage:
         project_name = get_session_project(convo_id)
-    Usage Example:
-        proj = get_session_project("research-stem-splitting-models")
-    """
-    import re
-    brain_dir = state.BRAIN_DIR
-    entry_path = os.path.join(brain_dir, convo_id)
-    transcript_path = os.path.join(entry_path, '.system_generated', 'logs', 'transcript.jsonl')
-    
-    project_name = "Global"
-    if os.path.exists(transcript_path):
-        try:
-            with open(transcript_path, 'r', errors='ignore') as f:
-                for line in f:
-                    # 1. Match worktrees path first (e.g. /antigravity/worktrees/OpenFeedbackRemover)
-                    match_worktree = re.search(r'/antigravity/worktrees/([^/\"\\\'\s\)]+)', line)
-                    if match_worktree:
-                        project_name = match_worktree.group(1)
-                        break
-                    
-                    # 2. Match general antigravity subdirectories (e.g. /antigravity/some-project)
-                    match_anti_sub = re.search(r'/antigravity/([^/\"\\\'\s\)]+)', line)
-                    if match_anti_sub:
-                        folder = match_anti_sub.group(1)
-                        if folder not in ["worktrees", "brain", "config", "logs", "plugins", "sidecars", "run"]:
-                            project_name = folder
-                            break
 
-                    # 3. Try matching the nested /Documents/antigravity/ path
-                    match_anti = re.search(r'/Documents/antigravity/([^/\"\\\'\s\)]+)', line)
-                    if match_anti:
-                        project_name = match_anti.group(1)
-                        break
-                    
-                    # 4. Try matching general paths under the user home directory
-                    match_user = re.search(r'/Users/[^/]+/([^/\"\\\'\s\)]+)', line)
-                    if match_user:
-                        folder = match_user.group(1)
-                        # Ignore common system folders and .gemini directory itself
-                        if folder not in ["Applications", "Library", "Documents", "Downloads", "Desktop", "Pictures", "config", "Brain", ".gemini"]:
-                            project_name = folder
-                            break
-        except Exception:
-            pass
-            
-    # Apply friendly mapping if matched
-    PROJECT_MAP = {
-        "jolly-lavoisier": "Discord-Agent",
-        "Discord-Agent": "Discord-Agent",
-        "CorrelationEngine": "DeCorrelationEngine",
-        "Correlation-Engine": "DeCorrelationEngine",
-        "DeCorrelationEngine": "DeCorrelationEngine",
-        "research-stem-splitting-models": "OpenFeedbackRemover",
-        "antigravity": "antigravity"
-    }
-    return PROJECT_MAP.get(project_name, project_name)
+    Usage Example:
+        proj = get_session_project("134486bf-d5b8-496e-9194-94468af7f8b8")
+    """
+    if convo_id in _project_cache:
+        return _project_cache[convo_id]
+
+    brain_dir = state.BRAIN_DIR
+    transcript_path = os.path.join(brain_dir, convo_id, '.system_generated', 'logs', 'transcript.jsonl')
+
+    if not os.path.exists(transcript_path):
+        return "Global"
+
+    folder_scores: Dict[str, float] = {}
+    max_lines = 200
+
+    try:
+        with open(transcript_path, 'r', errors='ignore') as f:
+            for line_num, line in enumerate(f, 1):
+                if line_num > max_lines:
+                    break
+
+                # Determine weight: USER_INPUT and tool_call lines get 3x weight
+                weight = 1.0
+                if '"type":"USER_INPUT"' in line:
+                    weight = 3.0
+                elif '"tool_calls"' in line:
+                    weight = 2.0
+
+                # Skip the ADDITIONAL_METADATA block content — it lists
+                # the user's open editor tabs, not the session's target
+                if "ADDITIONAL_METADATA" in line:
+                    weight = 0.0
+
+                if weight == 0.0:
+                    continue
+
+                # Extract ALL candidate folders from this line
+                candidates_on_line = set()
+
+                for m in _RE_WORKTREE.finditer(line):
+                    folder = m.group(1)
+                    if folder not in _EXCLUDED_FOLDERS:
+                        candidates_on_line.add(folder)
+
+                for m in _RE_ANTI_SUB.finditer(line):
+                    folder = m.group(1)
+                    if folder not in _EXCLUDED_FOLDERS:
+                        candidates_on_line.add(folder)
+
+                for m in _RE_DOCS_ANTI.finditer(line):
+                    folder = m.group(1)
+                    if folder not in _EXCLUDED_FOLDERS:
+                        candidates_on_line.add(folder)
+
+                # Accumulate weighted scores
+                for folder in candidates_on_line:
+                    folder_scores[folder] = folder_scores.get(folder, 0.0) + weight
+    except Exception:
+        pass
+
+    if not folder_scores:
+        _project_cache[convo_id] = "Global"
+        return "Global"
+
+    # Winner takes all — highest weighted score
+    best_folder = max(folder_scores, key=folder_scores.get)
+    project_name = PROJECT_MAP.get(best_folder, best_folder)
+    _project_cache[convo_id] = project_name
+    return project_name
 
 def is_session_awaiting_approval(convo_id: str, pending_plans: list, pending_approvals: list, pending_interactions: list) -> bool:
     """

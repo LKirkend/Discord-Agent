@@ -7,9 +7,9 @@ import threading
 import webbrowser
 import platform
 
-# Configuration Constants for GUI Version
-PLUGIN_NAME = "discord-liaison"
-DISPLAY_NAME = "Discord Liaison Bot"
+# Configuration Constants for IDE Version
+PLUGIN_NAME = "discord-liaison-ide"
+DISPLAY_NAME = "Discord Liaison Bot (IDE)"
 DEFAULT_PORT = "18000"
 
 GUI_AVAILABLE = False
@@ -29,7 +29,7 @@ except Exception:
 PLUGIN_JSON_TEMPLATE = {
   "name": PLUGIN_NAME,
   "version": "1.0.0",
-  "description": "Discord Liaison Bot integration for remote approvals, DMs, and agent dashboards",
+  "description": "Discord Liaison Bot integration for remote approvals, DMs, and agent dashboards in Antigravity IDE",
   "author": {
     "name": "Logan Kirkendall"
   },
@@ -44,13 +44,13 @@ PLUGIN_JSON_TEMPLATE = {
 }
 
 SKILL_MD_TEMPLATE = """---
-name: discord-liaison
-description: "Manage approvals, notifications, dashboards, and conversational DMs for Google Antigravity agents using a Discord bot liaison. Use this skill when the user wants to monitor agent sessions, run background agent tasks, or approve shell commands/file edits remotely via Discord buttons."
+name: discord-liaison-ide
+description: "Manage approvals, notifications, dashboards, and conversational DMs for Google Antigravity agents using a Discord bot liaison, configured for Antigravity IDE. Use this skill when the user wants to monitor agent sessions, run background agent tasks, or approve shell commands/file edits remotely via Discord buttons."
 ---
 
-# Discord Liaison Skill
+# Discord Liaison Skill (IDE version)
 
-This skill integrates a Discord bot into the Google Antigravity SDK to manage remote command approvals and task dashboards.
+This skill integrates a Discord bot into the Google Antigravity SDK to manage remote command approvals and task dashboards for Antigravity IDE.
 
 ## Architecture
 
@@ -60,7 +60,7 @@ This skill integrates a Discord bot into the Google Antigravity SDK to manage re
 ## Setup Instructions
 
 ### 1. Requirements & Dependencies
-Ensure the packages in `scripts/requirements.txt` are installed:
+Ensure the packages in `scripts/requirements.txt` are installed in the workspace's virtual environment:
 ```bash
 pip install discord.py fastapi uvicorn psutil python-dotenv
 ```
@@ -101,28 +101,24 @@ Once connected, the bot will post a live dashboard in your Discord DMs where you
 
 
 PLIST_LABEL = "com.antigravity.discord-liaison"
+PLIST_SOURCE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "com.antigravity.discord-liaison.plist")
 PLIST_DEST = os.path.expanduser(f"~/Library/LaunchAgents/{PLIST_LABEL}.plist")
 
 
 def launchd_register(python_exe: str, bot_script: str, scripts_dir: str, log_callback) -> bool:
     """Install and load the macOS LaunchAgent for auto-launch on login.
-    If the IDE version is already registered, skips silently (one shared daemon).
     No-op on non-macOS systems."""
     if platform.system() != "Darwin":
         log_callback("⚠️  LaunchAgent registration skipped (not macOS).")
         return True
     try:
-        # If the LaunchAgent already exists and is running (IDE daemon already manages it), skip.
-        if os.path.exists(PLIST_DEST):
-            log_callback("✅ LaunchAgent already registered (IDE daemon controls it). Skipping re-registration.")
-            return True
-
         log_callback("🚀 Registering LaunchAgent for auto-launch on login...")
-        log_dir = os.path.expanduser("~/.gemini/antigravity/logs")
+        log_dir = os.path.expanduser("~/.gemini/antigravity-ide/logs")
         os.makedirs(log_dir, exist_ok=True)
         launch_agents_dir = os.path.expanduser("~/Library/LaunchAgents")
         os.makedirs(launch_agents_dir, exist_ok=True)
 
+        # Build the plist content programmatically so paths are always current
         plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -160,6 +156,7 @@ def launchd_register(python_exe: str, bot_script: str, scripts_dir: str, log_cal
         with open(PLIST_DEST, "w") as pf:
             pf.write(plist_content)
 
+        # Unload any stale entry first, then load the fresh one
         subprocess.run(["launchctl", "unload", PLIST_DEST], capture_output=True)
         result = subprocess.run(["launchctl", "load", "-w", PLIST_DEST], capture_output=True, text=True)
         if result.returncode != 0 and result.stderr:
@@ -207,7 +204,11 @@ def perform_installation(token, user_id, username, client_id, client_secret, gem
         os.makedirs(sidecars_dir, exist_ok=True)
         
         # Files to copy
-        files = ["bot.py", "discord_policy.py", "run_agent.py", "test_suite.py", "requirements.txt"]
+        files = [
+            "bot.py", "discord_policy.py", "run_agent.py", "test_suite.py", 
+            "requirements.txt", "web_server.py", "discord_ui.py", 
+            "agent_manager.py", "helpers.py", "state.py", "config.json"
+        ]
         for f in files:
             src = os.path.join(source_dir, f)
             dest = os.path.join(scripts_dir, f)
@@ -271,7 +272,7 @@ def perform_installation(token, user_id, username, client_id, client_secret, gem
         log_callback("⚙️ Registering sidecar configuration...")
         sidecar_config = {
             "display_name": DISPLAY_NAME,
-            "description": f"Discord Liaison Bot for remote approvals, DMs, and agent dashboards.",
+            "description": f"Discord Liaison Bot for remote approvals, DMs, and agent dashboards in {DISPLAY_NAME}.",
             "command": os.path.abspath(python_exe),
             "args": [
                 "-u",
@@ -293,7 +294,7 @@ def perform_installation(token, user_id, username, client_id, client_secret, gem
             
         log_callback("🎉 Installation completed successfully!")
 
-        # Register LaunchAgent for auto-launch on macOS login (skips if IDE daemon already registered it)
+        # Register LaunchAgent for auto-launch on macOS login
         launchd_register(
             python_exe=os.path.abspath(python_exe),
             bot_script=os.path.abspath(os.path.join(scripts_dir, "bot.py")),

@@ -859,7 +859,7 @@ class TestDiscordApprovalServer(unittest.TestCase):
         ]
         
         # Mock file reads for transcripts to resolve project names
-        lines_session1 = ['{"content": "I am in /Users/logankirkendall/Documents/antigravity/Discord-Agent/bot.py"}']
+        lines_session1 = ['{"content": "I am in /Users/logankirkendall/Documents/antigravity/Discord-Agent-IDE/bot.py"}']
         lines_session2 = ['{"content": "I am in /Users/logankirkendall/Documents/antigravity/other-project/src/main.py"}']
         
         file_mocks = {
@@ -893,7 +893,7 @@ class TestDiscordApprovalServer(unittest.TestCase):
         # Test helper
         proj1 = bot.get_session_project("session12345678")
         proj2 = bot.get_session_project("sessionabcdefgh")
-        self.assertEqual(proj1, "Discord-Agent")
+        self.assertEqual(proj1, "Discord-Agent-IDE")
         self.assertEqual(proj2, "other-project")
         
         # Test build_dashboard_ui
@@ -907,7 +907,7 @@ class TestDiscordApprovalServer(unittest.TestCase):
         self.assertTrue(any("dash_proj_" in cid for cid in custom_ids))
         
         # Test build_project_menu_ui
-        embed_proj, view_proj = bot.build_project_menu_ui("Discord-Agent")
+        embed_proj, view_proj = bot.build_project_menu_ui("Discord-Agent-IDE")
         self.assertIsNotNone(embed_proj)
         self.assertIsNotNone(view_proj)
         
@@ -939,11 +939,11 @@ class TestDiscordApprovalServer(unittest.TestCase):
         }
         
         proj2_json = {
-            "name": "Discord-Agent",
+            "name": "Discord-Agent-IDE",
             "projectResources": {
                 "resources": [
                     {
-                        "folderUri": "file:///Users/logankirkendall/Documents/antigravity/Discord-Agent"
+                        "folderUri": "file:///Users/logankirkendall/Documents/antigravity/Discord-Agent-IDE"
                     }
                 ]
             }
@@ -974,11 +974,11 @@ class TestDiscordApprovalServer(unittest.TestCase):
         mock_open.side_effect = mock_open_fn
         
         path1 = bot.get_project_folder_path("DeCorrelationEngine")
-        path2 = bot.get_project_folder_path("Discord-Agent")
+        path2 = bot.get_project_folder_path("Discord-Agent-IDE")
         path_none = bot.get_project_folder_path("Nonexistent")
         
         self.assertEqual(path1, "/Users/logankirkendall/CorrelationEngine")
-        self.assertEqual(path2, "/Users/logankirkendall/Documents/antigravity/Discord-Agent")
+        self.assertEqual(path2, "/Users/logankirkendall/Documents/antigravity/Discord-Agent-IDE")
         self.assertIsNone(path_none)
 
     @patch("bot.bot")
@@ -1631,6 +1631,154 @@ class TestDiscordApprovalServer(unittest.TestCase):
             mock_bot_msg.delete.assert_called_once()
             mock_other_msg.delete.assert_not_called()
 
+    @patch("web_server.get_discord_target")
+    @patch("httpx.AsyncClient.post")
+    async def _test_openai_proxy_ollama_async(self, mock_httpx_post, mock_get_target):
+        """
+        Description:
+            Verifies the non-streaming OpenAI compatible completions proxy endpoint maps
+            and resolves local Ollama parameters correctly.
+        Usage:
+            await self._test_openai_proxy_ollama_async()
+        Usage Example:
+            await self._test_openai_proxy_ollama_async()
+        """
+        # Mock Discord target
+        mock_target = MagicMock()
+        fut_send = self.loop.create_future()
+        fut_send.set_result(None)
+        mock_target.send = MagicMock(return_value=fut_send)
+        mock_get_target.return_value = mock_target
+
+        # Mock httpx completion response
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "Hello, I am a local assistant."
+                    }
+                }
+            ]
+        }
+        mock_httpx_post.return_value = mock_resp
+
+        # Configure state
+        bot.state.MODEL_PROVIDER = "ollama"
+        bot.state.LOCAL_ENDPOINT = "http://localhost:11434/v1"
+        bot.state.LOCAL_MODEL_NAME = "qwen2.5-coder:7b"
+
+        # Make request
+        payload = {
+            "messages": [
+                {"role": "user", "content": "Tell me a joke."}
+            ],
+            "stream": False
+        }
+        response = client.post("/v1/chat/completions", json=payload)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Hello, I am a local assistant.", response.json()["choices"][0]["message"]["content"])
+        
+        # Wait a tiny bit for background task to dispatch to Discord
+        await asyncio.sleep(0.1)
+        mock_target.send.assert_called()
+
+    @patch("web_server.get_discord_target")
+    @patch("httpx.AsyncClient.stream")
+    async def _test_openai_proxy_stream_async(self, mock_httpx_stream, mock_get_target):
+        """
+        Description:
+            Verifies the streaming completions proxy endpoint processes chunks correctly,
+            pipes them back to the client, and sends the final response to Discord.
+        Usage:
+            await self._test_openai_proxy_stream_async()
+        Usage Example:
+            await self._test_openai_proxy_stream_async()
+        """
+        # Mock Discord target
+        mock_target = MagicMock()
+        fut_send = self.loop.create_future()
+        fut_send.set_result(None)
+        mock_target.send = MagicMock(return_value=fut_send)
+        mock_get_target.return_value = mock_target
+
+        # Mock streaming context manager & async iterator
+        class MockStreamResponse:
+            def __init__(self):
+                self.status_code = 200
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, exc_type, exc_val, exc_tb):
+                pass
+            async def aiter_bytes(self):
+                chunks = [
+                    b'data: {"choices": [{"delta": {"content": "Hello"}}]}\n\n',
+                    b'data: {"choices": [{"delta": {"content": " world"}}]}\n\n',
+                    b'data: [DONE]\n\n'
+                ]
+                for chunk in chunks:
+                    yield chunk
+
+        mock_httpx_stream.return_value = MockStreamResponse()
+
+        # Configure state
+        bot.state.MODEL_PROVIDER = "ollama"
+
+        # Make request
+        payload = {
+            "messages": [
+                {"role": "user", "content": "Hello stream."}
+            ],
+            "stream": True
+        }
+        
+        with client.stream("POST", "/v1/chat/completions", json=payload) as response:
+            self.assertEqual(response.status_code, 200)
+            body = b"".join(response.iter_bytes())
+            self.assertIn(b"Hello", body)
+            self.assertIn(b"world", body)
+
+        # Wait for background task to send to Discord
+        await asyncio.sleep(0.1)
+        mock_target.send.assert_called()
+
+    @patch("httpx.AsyncClient.get")
+    async def _test_openai_models_async(self, mock_httpx_get):
+        """
+        Description:
+            Verifies the list models endpoint resolves models correctly depending
+            on active model provider settings.
+        Usage:
+            await self._test_openai_models_async()
+        Usage Example:
+            await self._test_openai_models_async()
+        """
+        # Mock Ollama models response if active
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "object": "list",
+            "data": [
+                {"id": "qwen2.5-coder:7b", "object": "model"}
+            ]
+        }
+        mock_httpx_get.return_value = mock_resp
+
+        # 1. Test Ollama mode
+        bot.state.MODEL_PROVIDER = "ollama"
+        bot.state.LOCAL_ENDPOINT = "http://localhost:11434/v1"
+        response = client.get("/v1/models")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"][0]["id"], "qwen2.5-coder:7b")
+
+        # 2. Test Gemini mode
+        bot.state.MODEL_PROVIDER = "gemini"
+        response = client.get("/v1/models")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"][0]["id"], "gemini-2.5-flash")
+
     def test_new_features_execution(self):
         """Test wrapper for running new async test cases on the event loop."""
         self.loop.run_until_complete(self._test_transcript_monitor_filtering_async())
@@ -1643,6 +1791,9 @@ class TestDiscordApprovalServer(unittest.TestCase):
         self.loop.run_until_complete(self._test_update_dashboard_pinning_async())
         self.loop.run_until_complete(self._test_update_dashboard_new_pin_async())
         self.loop.run_until_complete(self._test_clear_command_async())
+        self.loop.run_until_complete(self._test_openai_proxy_ollama_async())
+        self.loop.run_until_complete(self._test_openai_proxy_stream_async())
+        self.loop.run_until_complete(self._test_openai_models_async())
 
 
 if __name__ == "__main__":

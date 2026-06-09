@@ -316,10 +316,10 @@ class OllamaAgent:
         from discord_policy import check_persistent_permission, discord_approval_handler
 
         while True:
-            url = "http://localhost:11434/v1/chat/completions"
+            url = f"{state.LOCAL_ENDPOINT}/chat/completions"
             headers = {"Content-Type": "application/json"}
             data = {
-                "model": "qwen2.5-coder:7b",
+                "model": state.LOCAL_MODEL_NAME,
                 "messages": [
                     {"role": "system", "content": self._config.system_instructions or ""}
                 ] + self._history,
@@ -481,9 +481,9 @@ async def run_spawned_agent(prompt: str, channel, project_name: Optional[str] = 
                 err_msg = str(e)
                 is_quota = any(q in err_msg.lower() for q in ["quota", "exhausted", "429", "rate limit", "resourceexhausted"])
                 if state.AUTO_SWITCH_LOCAL and is_quota:
-                    print("⚠️ Gemini quota exhausted. Automatically falling back to local Ollama...")
+                    print(f"⚠️ Gemini quota exhausted. Automatically falling back to local model {state.LOCAL_MODEL_NAME}...")
                     state.MODEL_PROVIDER = "ollama"
-                    await channel.send("⚠️ **Gemini API quota depleted (ResourceExhausted/429).** Automatically switching model provider to local Ollama (`qwen2.5-coder:7b`) and retrying...")
+                    await channel.send(f"⚠️ **Gemini API quota depleted (ResourceExhausted/429).** Automatically switching model provider to local model (`{state.LOCAL_MODEL_NAME}`) and retrying...")
                     # Let it fall through to the Ollama execution
                 else:
                     raise e

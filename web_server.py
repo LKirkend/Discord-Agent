@@ -5,10 +5,11 @@ import json
 import datetime
 import asyncio
 from typing import Dict, Optional, List, Tuple
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 import discord
+import httpx
 
 import state
 import helpers
@@ -1090,44 +1091,7 @@ async def post_message(req: MessageRequest):
     """
     if not state.bot or not state.bot.is_ready():
         raise HTTPException(status_code=503, detail="Discord bot is not ready")
-        
-    import bot
-    DISCORD_USER_ID = bot.DISCORD_USER_ID
-    DISCORD_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")
-    DISCORD_USER_NAME = os.getenv("DISCORD_USER_NAME", "Tig1")
-    
-    target = None
-    if DISCORD_USER_ID:
-        try:
-            target = await state.bot.fetch_user(int(DISCORD_USER_ID))
-        except Exception:
-            target = None
-            
-    if not target and DISCORD_USER_NAME:
-        for u in state.bot.users:
-            if u.name.lower() == DISCORD_USER_NAME.lower():
-                target = u
-                DISCORD_USER_ID = str(u.id)
-                # Helper imports locally to avoid circular dependencies
-                from web_server import update_env_file
-                update_env_file(DISCORD_USER_ID)
-                break
-                
-    if not target and DISCORD_CHANNEL_ID:
-        try:
-            target = state.bot.get_channel(int(DISCORD_CHANNEL_ID))
-        except Exception:
-            target = None
-            
-    if not target:
-        for guild in state.bot.guilds:
-            for chan in guild.text_channels:
-                if chan.permissions_for(guild.me).send_messages:
-                    target = chan
-                    break
-            if target:
-                break
-                
+    target = await get_discord_target()
     if not target:
         raise HTTPException(status_code=500, detail="No suitable destination found")
         
@@ -1190,12 +1154,29 @@ async def post_message(req: MessageRequest):
 def update_settings_in_env(model_provider: str, auto_switch_local: bool, discord_bot_permissions: str):
     """
     Description:
-        Updates the .env file with the Model Provider, Auto Switch Local, and Bot Permissions settings.
+        Updates the config.json and .env files with the Model Provider, Auto Switch Local, and Bot Permissions settings.
     Usage:
         update_settings_in_env(model_provider, auto_switch_local, discord_bot_permissions)
     Usage Example:
         update_settings_in_env("ollama", True, "8471182706732241")
     """
+    # 1. Update config.json
+    config_path = state.CONFIG_PATH
+    try:
+        config_data = {}
+        if os.path.exists(config_path):
+            with open(config_path, "r") as f:
+                config_data = json.load(f)
+        config_data["model_provider"] = model_provider
+        config_data["auto_switch_local"] = auto_switch_local
+        config_data["discord_bot_permissions"] = discord_bot_permissions
+        with open(config_path, "w") as f:
+            json.dump(config_data, f, indent=2)
+        print(f"[Bot] Successfully updated config.json with model_provider={model_provider}, auto_switch_local={auto_switch_local}, discord_bot_permissions={discord_bot_permissions}")
+    except Exception as e:
+        print(f"[Bot] Failed to update config.json: {e}")
+
+    # 2. Update .env file
     env_path = state.ENV_PATH
     try:
         new_content = []
@@ -1232,6 +1213,7 @@ def update_settings_in_env(model_provider: str, auto_switch_local: bool, discord
         print(f"[Bot] Successfully updated .env file with MODEL_PROVIDER={model_provider}, AUTO_SWITCH_LOCAL={auto_switch_local}, DISCORD_BOT_PERMISSIONS={discord_bot_permissions}")
     except Exception as e:
         print(f"[Bot] Failed to update .env settings: {e}")
+
 
 def update_env_file(user_id: str):
     """
@@ -1620,3 +1602,329 @@ async def post_interaction(req: InteractionRequest):
         return InteractionResponse(responses=responses, cancelled=cancelled)
     finally:
         state.active_pending_items.pop(interaction_id, None)
+
+
+async def get_discord_target() -> Optional[discord.abc.Messageable]:
+    """
+    Description:
+        Resolves and returns the target Discord user or channel destination.
+        Attempts user fetch first, then name iteration, then channel/guild text fallbacks.
+    Usage:
+        target = await get_discord_target()
+    Usage Example:
+        target = await get_discord_target()
+    """
+    if not state.bot or not state.bot.is_ready():
+        return None
+        
+    import bot
+    discord_user_id = bot.DISCORD_USER_ID or os.getenv("DISCORD_USER_ID")
+    discord_username = os.getenv("DISCORD_USER_NAME", "Tig1")
+    discord_channel_id = os.getenv("DISCORD_CHANNEL_ID")
+    
+    target = None
+    if discord_user_id:
+        try:
+            target = await state.bot.fetch_user(int(discord_user_id))
+        except Exception:
+            target = None
+            
+    if not target and discord_username:
+        for u in state.bot.users:
+            if u.name.lower() == discord_username.lower():
+                target = u
+                # Helper imports locally to avoid circular dependencies
+                from web_server import update_env_file
+                update_env_file(str(u.id))
+                break
+                
+    if not target and discord_channel_id:
+        try:
+            target = state.bot.get_channel(int(discord_channel_id))
+        except Exception:
+            target = None
+            
+    if not target:
+        for guild in state.bot.guilds:
+            for chan in guild.text_channels:
+                if chan.permissions_for(guild.me).send_messages:
+                    target = chan
+                    break
+            if target:
+                break
+                
+    return target
+
+
+def resolve_target_and_payload(raw_request: dict) -> Tuple[str, dict, dict]:
+    """
+    Description:
+        Resolves target URL, payload, and headers based on active state configurations
+        (MODEL_PROVIDER, LOCAL_ENDPOINT, LOCAL_MODEL_NAME, etc.).
+    Usage:
+        target_url, payload, headers = resolve_target_and_payload(raw_request)
+    Usage Example:
+        url, pay, head = resolve_target_and_payload({"messages": []})
+    """
+    headers = {"Content-Type": "application/json"}
+    
+    if state.MODEL_PROVIDER == "ollama":
+        base_url = state.LOCAL_ENDPOINT.rstrip("/")
+        if not base_url.endswith("/chat/completions"):
+            target_url = f"{base_url}/chat/completions"
+        else:
+            target_url = base_url
+            
+        payload = dict(raw_request)
+        payload["model"] = state.LOCAL_MODEL_NAME
+        
+    else:  # gemini or any other remote/custom
+        remote_base = state.REMOTE_ENDPOINT.strip() if state.REMOTE_ENDPOINT else "https://generativelanguage.googleapis.com/v1beta/openai"
+        remote_base = remote_base.rstrip("/")
+        if not remote_base.endswith("/chat/completions"):
+            target_url = f"{remote_base}/chat/completions"
+        else:
+            target_url = remote_base
+            
+        payload = dict(raw_request)
+        req_model = payload.get("model", "")
+        if not req_model or (not req_model.startswith("gemini") and not state.REMOTE_ENDPOINT):
+            payload["model"] = "gemini-2.5-flash"
+            
+        api_key = state.REMOTE_API_KEY.strip() if state.REMOTE_API_KEY else os.getenv("REMOTE_API_KEY", "")
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+            if "generativelanguage.googleapis.com" in target_url and "?" not in target_url:
+                target_url = f"{target_url}?key={api_key}"
+                
+    return target_url, payload, headers
+
+
+async def send_prompt_to_discord(convo_id: str, prompt: str):
+    """
+    Description:
+        Sends the user's proxy prompt to the Discord target.
+    Usage:
+        await send_prompt_to_discord(convo_id, prompt)
+    Usage Example:
+        await send_prompt_to_discord("convo-123", "hello")
+    """
+    target = await get_discord_target()
+    if not target:
+        print("[API Proxy] No Discord target resolved to send prompt notification.")
+        return
+    
+    seen_paths = set()
+    cleaned_prompt, all_files = extract_and_prepare_files(prompt, seen_paths)
+    
+    convo_short = convo_id[:8] if convo_id else "unknown"
+    header = f"💬 **[Proxy Prompt - `{convo_short}`]**\n"
+    content = header + cleaned_prompt
+    
+    try:
+        if len(content) > 1900:
+            chunks = [content[i:i+1900] for i in range(0, len(content), 1900)]
+            if all_files:
+                await target.send(content=chunks[0], files=all_files)
+            else:
+                await target.send(content=chunks[0])
+            for chunk in chunks[1:]:
+                await target.send(content=chunk)
+        else:
+            if all_files:
+                await target.send(content=content, files=all_files)
+            else:
+                await target.send(content=content)
+    except Exception as e:
+        print(f"[API Proxy] Failed to send prompt to Discord: {e}")
+
+
+async def send_response_to_discord(convo_id: str, response_text: str):
+    """
+    Description:
+        Sends the model's proxy response to the Discord target.
+    Usage:
+        await send_response_to_discord(convo_id, response_text)
+    Usage Example:
+        await send_response_to_discord("convo-123", "here is the response")
+    """
+    if not response_text.strip():
+        return
+        
+    target = await get_discord_target()
+    if not target:
+        print("[API Proxy] No Discord target resolved to send response notification.")
+        return
+        
+    seen_paths = set()
+    cleaned_text, all_files = extract_and_prepare_files(response_text, seen_paths)
+    
+    convo_short = convo_id[:8] if convo_id else "unknown"
+    header = f"🏆 **[Proxy Response - `{convo_short}`]**\n"
+    content = header + cleaned_text
+    
+    try:
+        if len(content) > 1900:
+            chunks = [content[i:i+1900] for i in range(0, len(content), 1900)]
+            if all_files:
+                await target.send(content=chunks[0], files=all_files)
+            else:
+                await target.send(content=chunks[0])
+            for chunk in chunks[1:]:
+                await target.send(content=chunk)
+        else:
+            if all_files:
+                await target.send(content=content, files=all_files)
+            else:
+                await target.send(content=content)
+    except Exception as e:
+        print(f"[API Proxy] Failed to send response to Discord: {e}")
+
+
+@app.post("/v1/chat/completions")
+async def chat_completions(raw_request: dict, request: Request):
+    """
+    Description:
+        OpenAI-compatible chat completions proxy endpoint. Forwards request to local
+        or remote LLM endpoints based on configuration and broadcasts prompt/response
+        to the user's Discord channel.
+    Usage:
+        res = await chat_completions(raw_request, request)
+    Usage Example:
+        res = await chat_completions({"messages": []}, request)
+    """
+    convo_id = request.headers.get("x-conversation-id") or request.headers.get("x-session-id")
+    if not convo_id:
+        convo_id = raw_request.get("user")
+    if not convo_id:
+        convo_id = f"proxy-{uuid.uuid4()}"
+
+    target_url, payload, headers = resolve_target_and_payload(raw_request)
+    
+    # Extract last user message and post to Discord
+    user_msgs = [m for m in payload.get("messages", []) if m.get("role") == "user"]
+    if user_msgs:
+        last_user_prompt = user_msgs[-1].get("content")
+        if last_user_prompt:
+            asyncio.create_task(send_prompt_to_discord(convo_id, last_user_prompt))
+
+    is_stream = payload.get("stream", False)
+    
+    if is_stream:
+        async def stream_generator():
+            accumulated_content = []
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                try:
+                    async with client.stream("POST", target_url, json=payload, headers=headers) as response:
+                        if response.status_code != 200:
+                            err_text = await response.aread()
+                            yield f"data: {json.dumps({'error': err_text.decode('utf-8', errors='ignore')})}\n\n".encode("utf-8")
+                            return
+                        
+                        buffer = ""
+                        async for chunk in response.aiter_bytes():
+                            yield chunk
+                            
+                            buffer += chunk.decode("utf-8", errors="ignore")
+                            while "\n" in buffer:
+                                line, buffer = buffer.split("\n", 1)
+                                line = line.strip()
+                                if line.startswith("data:"):
+                                    data_content = line[5:].strip()
+                                    if data_content == "[DONE]":
+                                        continue
+                                    try:
+                                        parsed = json.loads(data_content)
+                                        choices = parsed.get("choices", [])
+                                        if choices:
+                                            delta = choices[0].get("delta", {})
+                                            content = delta.get("content")
+                                            if content:
+                                                accumulated_content.append(content)
+                                    except Exception:
+                                        pass
+                except Exception as e:
+                    yield f"data: {json.dumps({'error': str(e)})}\n\n".encode("utf-8")
+                finally:
+                    # After stream concludes, dispatch the full response to Discord
+                    final_response_text = "".join(accumulated_content)
+                    if final_response_text:
+                        asyncio.create_task(send_response_to_discord(convo_id, final_response_text))
+                        
+        return StreamingResponse(stream_generator(), media_type="text/event-stream")
+        
+    else:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            try:
+                response = await client.post(target_url, json=payload, headers=headers)
+                res_data = response.json()
+                
+                # Try to extract message content to notify Discord
+                choices = res_data.get("choices", [])
+                if choices:
+                    message = choices[0].get("message", {})
+                    content = message.get("content", "")
+                    if content:
+                        asyncio.create_task(send_response_to_discord(convo_id, content))
+                        
+                return JSONResponse(content=res_data, status_code=response.status_code)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to communicate with LLM provider: {e}")
+
+
+@app.get("/v1/models")
+async def list_models():
+    """
+    Description:
+        OpenAI-compatible models list endpoint.
+    Usage:
+        res = await list_models()
+    Usage Example:
+        res = await list_models()
+    """
+    created_time = int(time.time())
+    
+    if state.MODEL_PROVIDER == "ollama":
+        base_url = state.LOCAL_ENDPOINT.rstrip("/")
+        if base_url.endswith("/v1"):
+            models_url = f"{base_url}/models"
+        else:
+            models_url = f"{base_url}/v1/models"
+            
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                res = await client.get(models_url)
+                if res.status_code == 200:
+                    return res.json()
+        except Exception:
+            pass
+            
+        return {
+            "object": "list",
+            "data": [
+                {
+                    "id": state.LOCAL_MODEL_NAME,
+                    "object": "model",
+                    "created": created_time,
+                    "owned_by": "ollama"
+                }
+            ]
+        }
+    else:
+        return {
+            "object": "list",
+            "data": [
+                {
+                    "id": "gemini-2.5-flash",
+                    "object": "model",
+                    "created": created_time,
+                    "owned_by": "google"
+                },
+                {
+                    "id": "gemini-2.5-pro",
+                    "object": "model",
+                    "created": created_time,
+                    "owned_by": "google"
+                }
+            ]
+        }

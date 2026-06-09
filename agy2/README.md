@@ -1,6 +1,8 @@
 # Antigravity Discord Liaison Bot
 
-A centralized, interactive Discord bot and API daemon designed to act as an approval liaison, dashboard monitor, and message routing hub for **Google Antigravity SDK** agents.
+A centralized, interactive Discord bot and API daemon designed to act as an approval liaison, dashboard monitor, and message routing hub for Google Antigravity SDK agents.
+
+**Long-Term Goal:** A standalone Discord bot that can act as a liaison to AI models requesting permissions or requiring user input, serving that data from Discord DM chats & servers. Compatible with Antigravity-IDE and Antigravity 2, but aiming to be an agent compatible with any model that acts as a user message delivery and translation layer. Aiming for odysseus support soon.
 
 ---
 
