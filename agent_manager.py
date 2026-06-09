@@ -318,8 +318,11 @@ class OllamaAgent:
         while True:
             url = f"{state.AGENT_ENDPOINT}/chat/completions"
             headers = {"Content-Type": "application/json"}
+            api_key = state.AGENT_API_KEY.strip() if state.AGENT_API_KEY else ""
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
             data = {
-                "model": state.LOCAL_MODEL_NAME,
+                "model": state.AGENT_MODEL_NAME,
                 "messages": [
                     {"role": "system", "content": self._config.system_instructions or ""}
                 ] + self._history,
@@ -464,10 +467,10 @@ async def run_spawned_agent(prompt: str, channel, project_name: Optional[str] = 
         response = None
         os.environ["ANTIGRAVITY_CONVERSATION_ID"] = convo_id
         
-        await status_msg.edit(content=f"🚀 **Agent active ({state.MODEL_PROVIDER}) and executing task...**\n• Project: `{project_name or 'Global'}`\n• Session ID: `{convo_id[:8]}`\n• Request: *{prompt}*")
+        await status_msg.edit(content=f"🚀 **Agent active ({state.AGENT_PROVIDER}) and executing task...**\n• Project: `{project_name or 'Global'}`\n• Session ID: `{convo_id[:8]}`\n• Request: *{prompt}*")
         
         # 1. Attempt turn using current provider
-        if state.MODEL_PROVIDER == "gemini":
+        if state.AGENT_PROVIDER == "gemini":
             try:
                 async with Agent(config) as agent:
                     raw_convo_id = getattr(agent, 'conversation_id', None)
@@ -480,14 +483,14 @@ async def run_spawned_agent(prompt: str, channel, project_name: Optional[str] = 
                 err_msg = str(e)
                 is_quota = any(q in err_msg.lower() for q in ["quota", "exhausted", "429", "rate limit", "resourceexhausted"])
                 if state.AUTO_SWITCH_LOCAL and is_quota:
-                    print(f"⚠️ Gemini quota exhausted. Automatically falling back to local model {state.LOCAL_MODEL_NAME}...")
-                    state.MODEL_PROVIDER = "ollama"
-                    await channel.send(f"⚠️ **Gemini API quota depleted (ResourceExhausted/429).** Automatically switching model provider to local model (`{state.LOCAL_MODEL_NAME}`) and retrying...")
+                    print(f"⚠️ Gemini quota exhausted. Automatically falling back to local model {state.AGENT_MODEL_NAME}...")
+                    state.AGENT_PROVIDER = "ollama"
+                    await channel.send(f"⚠️ **Gemini API quota depleted (ResourceExhausted/429).** Automatically switching agent provider to local model (`{state.AGENT_MODEL_NAME}`) and retrying...")
                     # Let it fall through to the Ollama execution
                 else:
                     raise e
                     
-        if state.MODEL_PROVIDER == "ollama":
+        if state.AGENT_PROVIDER == "ollama":
             async with OllamaAgent(config) as agent:
                 convo_id = agent.conversation_id
                 os.environ["ANTIGRAVITY_CONVERSATION_ID"] = convo_id

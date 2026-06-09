@@ -154,6 +154,9 @@ class SettingsRequest(BaseModel):
     forward_endpoint: Optional[str] = None
     agent_api_key: Optional[str] = None
     forward_api_key: Optional[str] = None
+    agent_provider: Optional[str] = None
+    agent_model_name: Optional[str] = None
+    local_model_name: Optional[str] = None
 
 def is_dangerous_command(command: str) -> bool:
     """
@@ -466,6 +469,8 @@ async def post_settings(req: SettingsRequest):
         res = await post_settings(SettingsRequest(model_provider="ollama", auto_switch_local=True, discord_bot_permissions="8471182706732241"))
     """
     state.MODEL_PROVIDER = req.model_provider
+    if req.agent_provider is not None:
+        state.AGENT_PROVIDER = req.agent_provider
     state.AUTO_SWITCH_LOCAL = req.auto_switch_local
     state.DISCORD_BOT_PERMISSIONS = req.discord_bot_permissions
     
@@ -479,7 +484,8 @@ async def post_settings(req: SettingsRequest):
         "hf_api_key", "hf_model_name",
         "openai_api_key", "openai_model_name",
         "custom_api_key", "custom_model_name", "custom_endpoint",
-        "agent_endpoint", "forward_endpoint", "agent_api_key", "forward_api_key"
+        "agent_endpoint", "forward_endpoint", "agent_api_key", "forward_api_key",
+        "agent_provider", "agent_model_name", "local_model_name"
     ]:
         val = getattr(req, key)
         if val is not None:
@@ -1220,7 +1226,8 @@ def update_settings_in_env(req: SettingsRequest):
             "hf_api_key", "hf_model_name",
             "openai_api_key", "openai_model_name",
             "custom_api_key", "custom_model_name", "custom_endpoint",
-            "agent_endpoint", "forward_endpoint", "agent_api_key", "forward_api_key"
+            "agent_endpoint", "forward_endpoint", "agent_api_key", "forward_api_key",
+            "agent_provider", "agent_model_name", "local_model_name"
         ]:
             val = getattr(req, key)
             if val is not None:
@@ -1245,6 +1252,8 @@ def update_settings_in_env(req: SettingsRequest):
                         env_dict[k.strip()] = v.strip()
                         
         env_dict["MODEL_PROVIDER"] = req.model_provider
+        if req.agent_provider is not None:
+            env_dict["AGENT_PROVIDER"] = req.agent_provider
         env_dict["AUTO_SWITCH_LOCAL"] = str(req.auto_switch_local)
         env_dict["DISCORD_BOT_PERMISSIONS"] = req.discord_bot_permissions
         
@@ -1258,7 +1267,8 @@ def update_settings_in_env(req: SettingsRequest):
             "hf_api_key", "hf_model_name",
             "openai_api_key", "openai_model_name",
             "custom_api_key", "custom_model_name", "custom_endpoint",
-            "agent_endpoint", "forward_endpoint", "agent_api_key", "forward_api_key"
+            "agent_endpoint", "forward_endpoint", "agent_api_key", "forward_api_key",
+            "agent_provider", "agent_model_name", "local_model_name"
         ]:
             val = getattr(req, key)
             if val is not None:
@@ -1780,7 +1790,7 @@ def resolve_target_and_payload(raw_request: dict) -> Tuple[str, dict, dict]:
         else:
             target_url = base_url
         payload = dict(raw_request)
-        payload["model"] = state.LOCAL_MODEL_NAME
+        payload["model"] = state.AGENT_MODEL_NAME
         
     elif state.MODEL_PROVIDER == "claude":
         target_url = "https://api.anthropic.com/v1/messages"

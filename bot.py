@@ -98,7 +98,8 @@ class DynamicModule(ModuleType):
             "HF_API_KEY", "HF_MODEL_NAME",
             "OPENAI_API_KEY", "OPENAI_MODEL_NAME",
             "AGENT_ENDPOINT", "FORWARD_ENDPOINT", "LOCAL_ENDPOINT", "REMOTE_ENDPOINT",
-            "AGENT_API_KEY", "FORWARD_API_KEY", "REMOTE_API_KEY"
+            "AGENT_API_KEY", "FORWARD_API_KEY", "REMOTE_API_KEY",
+            "AGENT_PROVIDER", "AGENT_MODEL_NAME", "LOCAL_MODEL_NAME"
         ]:
             setattr(state, name, value)
         else:
@@ -120,7 +121,8 @@ class DynamicModule(ModuleType):
                 "HF_API_KEY", "HF_MODEL_NAME",
                 "OPENAI_API_KEY", "OPENAI_MODEL_NAME",
                 "AGENT_ENDPOINT", "FORWARD_ENDPOINT", "LOCAL_ENDPOINT", "REMOTE_ENDPOINT",
-                "AGENT_API_KEY", "FORWARD_API_KEY", "REMOTE_API_KEY"
+                "AGENT_API_KEY", "FORWARD_API_KEY", "REMOTE_API_KEY",
+                "AGENT_PROVIDER", "AGENT_MODEL_NAME", "LOCAL_MODEL_NAME"
             ]:
                 if hasattr(state, name):
                     delattr(state, name)

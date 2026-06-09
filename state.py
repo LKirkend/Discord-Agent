@@ -46,6 +46,7 @@ except ImportError:
 
 # Model & Core Configuration Loader
 MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", config_data.get("model_provider", "gemini"))
+AGENT_PROVIDER = os.getenv("AGENT_PROVIDER", config_data.get("agent_provider", "ollama"))
 
 raw_auto_switch = os.getenv("AUTO_SWITCH_LOCAL")
 if raw_auto_switch is not None:
@@ -57,7 +58,7 @@ DISCORD_BOT_PERMISSIONS = os.getenv("DISCORD_BOT_PERMISSIONS", config_data.get("
 
 # Local & Remote Endpoint Configurations (Renamed to Agent & Forward Endpoints)
 AGENT_ENDPOINT = os.getenv("AGENT_ENDPOINT", os.getenv("LOCAL_ENDPOINT", config_data.get("agent_endpoint", config_data.get("local_endpoint", "http://localhost:11434/v1"))))
-LOCAL_MODEL_NAME = os.getenv("LOCAL_MODEL_NAME", config_data.get("local_model_name", "qwen2.5-coder:7b"))
+AGENT_MODEL_NAME = os.getenv("AGENT_MODEL_NAME", os.getenv("LOCAL_MODEL_NAME", config_data.get("agent_model_name", config_data.get("local_model_name", "qwen2.5-coder:7b"))))
 FORWARD_ENDPOINT = os.getenv("FORWARD_ENDPOINT", os.getenv("REMOTE_ENDPOINT", config_data.get("forward_endpoint", config_data.get("remote_endpoint", ""))))
 FORWARD_API_KEY = os.getenv("FORWARD_API_KEY", os.getenv("REMOTE_API_KEY", config_data.get("forward_api_key", config_data.get("remote_api_key", ""))))
 AGENT_API_KEY = os.getenv("AGENT_API_KEY", config_data.get("agent_api_key", ""))

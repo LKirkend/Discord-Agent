@@ -38,6 +38,7 @@ class TestDiscordApprovalServer(unittest.TestCase):
 
     def setUp(self):
         bot.state.MODEL_PROVIDER = "gemini"
+        bot.state.AGENT_PROVIDER = "gemini"
         bot.state.AUTO_SWITCH_LOCAL = False
 
     @patch("bot.bot")
@@ -1674,7 +1675,7 @@ class TestDiscordApprovalServer(unittest.TestCase):
         # Configure state
         bot.state.MODEL_PROVIDER = "ollama"
         bot.state.AGENT_ENDPOINT = "http://localhost:11434/v1"
-        bot.state.LOCAL_MODEL_NAME = "qwen2.5-coder:7b"
+        bot.state.AGENT_MODEL_NAME = "qwen2.5-coder:7b"
 
         # Make request
         payload = {
