@@ -909,6 +909,13 @@ async def get_status_ui():
                             <span class="slider"></span>
                         </label>
                     </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 12px;">
+                        <span class="info-key" style="font-size: 13px;">Force server-only chat (bypass DMs)</span>
+                        <label class="switch">
+                            <input type="checkbox" id="chk-force-server">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
                 </div>
             </div>
             
@@ -968,6 +975,7 @@ async def get_status_ui():
         <script>
             let currentProvider = "";
             let currentAutoSwitch = false;
+            let currentForceServerChat = false;
             let currentPermissions = "{DISCORD_BOT_PERMISSIONS}";
             const txtPerms = document.getElementById('txt-permissions');
 
@@ -1001,7 +1009,7 @@ async def get_status_ui():
                     dot.style.boxShadow = `0 0 8px ${{data.status_color}}`;
                     
                     updatePauseUI(data.paused);
-                    updateSettingsUI(data.model_provider, data.auto_switch_local);
+                    updateSettingsUI(data.model_provider, data.auto_switch_local, data.force_server_chat === 1);
                     
                     document.documentElement.style.setProperty('--pulse-rgb', data.status_rgb);
                 }} catch (e) {{
@@ -1023,13 +1031,15 @@ async def get_status_ui():
                 }}
             }}
 
-            function updateSettingsUI(provider, autoSwitch) {{
+            function updateSettingsUI(provider, autoSwitch, forceServer) {{
                 currentProvider = provider;
                 currentAutoSwitch = autoSwitch;
+                currentForceServerChat = forceServer;
                 
                 const btnGemini = document.getElementById('btn-gemini');
                 const btnOllama = document.getElementById('btn-ollama');
                 const chkAutoSwitch = document.getElementById('chk-auto-switch');
+                const chkForceServer = document.getElementById('chk-force-server');
                 
                 if (provider === "gemini") {{
                     btnGemini.classList.add('active');
@@ -1040,9 +1050,10 @@ async def get_status_ui():
                 }}
                 
                 chkAutoSwitch.checked = autoSwitch;
+                chkForceServer.checked = forceServer;
             }}
 
-            async function saveSettings(provider, autoSwitch) {{
+            async function saveSettings(provider, autoSwitch, forceServer) {{
                 try {{
                     const res = await fetch('/api/settings', {{
                         method: 'POST',
@@ -1050,21 +1061,24 @@ async def get_status_ui():
                         body: JSON.stringify({{ 
                             model_provider: provider, 
                             auto_switch_local: autoSwitch,
-                            discord_bot_permissions: currentPermissions
+                            discord_bot_permissions: currentPermissions,
+                            force_server_chat: forceServer ? 1 : 0,
+                            force_only_server: forceServer ? 1 : 0
                         }})
                     }});
                     if (res.ok) {{
                         const data = await res.json();
-                        updateSettingsUI(data.model_provider, data.auto_switch_local);
+                        updateSettingsUI(data.model_provider, data.auto_switch_local, data.force_server_chat === 1);
                     }}
                 }} catch (e) {{
                     console.error("Failed to save settings:", e);
                 }}
             }}
             
-            document.getElementById('btn-gemini').addEventListener('click', () => saveSettings('gemini', currentAutoSwitch));
-            document.getElementById('btn-ollama').addEventListener('click', () => saveSettings('ollama', currentAutoSwitch));
-            document.getElementById('chk-auto-switch').addEventListener('change', (e) => saveSettings(currentProvider, e.target.checked));
+            document.getElementById('btn-gemini').addEventListener('click', () => saveSettings('gemini', currentAutoSwitch, currentForceServerChat));
+            document.getElementById('btn-ollama').addEventListener('click', () => saveSettings('ollama', currentAutoSwitch, currentForceServerChat));
+            document.getElementById('chk-auto-switch').addEventListener('change', (e) => saveSettings(currentProvider, e.target.checked, currentForceServerChat));
+            document.getElementById('chk-force-server').addEventListener('change', (e) => saveSettings(currentProvider, currentAutoSwitch, e.target.checked));
 
             const savePermsBtn = document.getElementById('btn-save-permissions');
             const confirmModal = document.getElementById('confirm-modal');
@@ -1095,7 +1109,9 @@ async def get_status_ui():
                         body: JSON.stringify({{ 
                             model_provider: currentProvider, 
                             auto_switch_local: currentAutoSwitch,
-                            discord_bot_permissions: pendingPermissions
+                            discord_bot_permissions: pendingPermissions,
+                            force_server_chat: currentForceServerChat ? 1 : 0,
+                            force_only_server: currentForceServerChat ? 1 : 0
                         }})
                     }});
                     if (res.ok) {{
