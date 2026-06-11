@@ -1160,6 +1160,31 @@ def create_bot(use_message_content: bool):
 
     return new_bot
 
+def check_single_instance():
+    """
+    Description:
+        Checks if another python process running bot.py is already active on the system.
+        If another instance is found, print an error and exit with code 1.
+    Usage:
+        check_single_instance()
+    Usage Example:
+        check_single_instance()
+    """
+    current_pid = os.getpid()
+    for proc in psutil.process_iter(['pid', 'name']):
+        try:
+            if proc.pid == current_pid:
+                continue
+            name = proc.info.get('name') or ''
+            if 'python' in name.lower():
+                cmd = proc.cmdline()
+                if any(arg.endswith('bot.py') for arg in cmd):
+                    print(f"❌ Error: Another instance of the Discord Liaison Bot is already running (PID: {proc.pid}).")
+                    print("Ensure only one daemon instance is active at a time to prevent token session conflicts.")
+                    sys.exit(1)
+        except (psutil.NoSuchProcess, psutil.AccessDenied, Exception):
+            continue
+
 async def main():
     """
     Description:
@@ -1198,17 +1223,20 @@ async def main():
                 print(f"[Bot] Failed to generate SSL certificate: {e}")
                 
         if os.path.exists(cert_path) and os.path.exists(key_path):
-            try:
-                ssl_config = uvicorn.Config(
-                    app, host="127.0.0.1", port=state.PORT + 1, 
-                    ssl_keyfile=key_path, ssl_certfile=cert_path, 
-                    log_level="info"
-                )
-                ssl_server = uvicorn.Server(ssl_config)
-                ssl_server_task = asyncio.create_task(ssl_server.serve())
-                print(f"🚀 Starting HTTPS server on https://127.0.0.1:{state.PORT + 1}")
-            except Exception as e:
-                print(f"[Bot] Failed to start HTTPS server: {e}")
+            if _is_port_in_use(state.PORT + 1):
+                print(f"⚠️ [Bot] HTTPS port {state.PORT + 1} already in use — not starting HTTPS server.")
+            else:
+                try:
+                    ssl_config = uvicorn.Config(
+                        app, host="127.0.0.1", port=state.PORT + 1, 
+                        ssl_keyfile=key_path, ssl_certfile=cert_path, 
+                        log_level="info"
+                    )
+                    ssl_server = uvicorn.Server(ssl_config)
+                    ssl_server_task = asyncio.create_task(ssl_server.serve())
+                    print(f"🚀 Starting HTTPS server on https://127.0.0.1:{state.PORT + 1}")
+                except Exception as e:
+                    print(f"[Bot] Failed to start HTTPS server: {e}")
 
     print("🔌 Connecting Discord bot...")
     
@@ -1225,6 +1253,7 @@ async def main():
 
 if __name__ == "__main__":
     try:
+        check_single_instance()
         asyncio.run(main())
     except KeyboardInterrupt:
         print("Shutting down servers...")

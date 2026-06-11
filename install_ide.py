@@ -171,6 +171,16 @@ def launchd_register(python_exe: str, bot_script: str, scripts_dir: str, log_cal
         with open(PLIST_DEST, "w") as pf:
             pf.write(plist_content)
 
+        # Unload any conflicting launch agent from the other version
+        other_plist_dest = os.path.expanduser("~/Library/LaunchAgents/com.antigravity.discord-liaison.plist")
+        if os.path.exists(other_plist_dest):
+            log_callback("🧹 Found conflicting Discord Liaison Bot (AGY2) launch agent. Unloading and removing it...")
+            subprocess.run(["launchctl", "unload", "-w", other_plist_dest], capture_output=True)
+            try:
+                os.remove(other_plist_dest)
+            except Exception as e:
+                log_callback(f"⚠️ Warning: Could not remove old plist file: {e}")
+
         # Unload any stale entry first, then load the fresh one
         subprocess.run(["launchctl", "unload", PLIST_DEST], capture_output=True)
         result = subprocess.run(["launchctl", "load", "-w", PLIST_DEST], capture_output=True, text=True)

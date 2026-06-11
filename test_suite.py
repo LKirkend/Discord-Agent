@@ -2164,6 +2164,64 @@ class TestDiscordApprovalServer(unittest.TestCase):
         mock_chan.send.assert_called_once()
         mock_msg.pin.assert_called_once()
 
+    @patch("psutil.process_iter")
+    @patch("sys.exit")
+    @patch("os.getpid")
+    def test_check_single_instance_running(self, mock_getpid, mock_exit, mock_process_iter):
+        """
+        Description:
+            Verifies check_single_instance exits with code 1 if another bot.py process is active.
+        Usage:
+            test_check_single_instance_running(mock_getpid, mock_exit, mock_process_iter)
+        Usage Example:
+            test_check_single_instance_running(mock_getpid, mock_exit, mock_process_iter)
+        """
+        mock_getpid.return_value = 1234
+        
+        # Mocking process info
+        mock_proc = MagicMock()
+        mock_proc.pid = 5678
+        mock_proc.info = {"name": "python3"}
+        mock_proc.cmdline.return_value = ["/path/to/venv/bin/python", "-u", "/path/to/bot.py"]
+        
+        mock_process_iter.return_value = [mock_proc]
+        
+        bot.check_single_instance()
+        
+        mock_exit.assert_called_once_with(1)
+
+    @patch("psutil.process_iter")
+    @patch("sys.exit")
+    @patch("os.getpid")
+    def test_check_single_instance_not_running(self, mock_getpid, mock_exit, mock_process_iter):
+        """
+        Description:
+            Verifies check_single_instance does not exit if no other bot.py process is active.
+        Usage:
+            test_check_single_instance_not_running(mock_getpid, mock_exit, mock_process_iter)
+        Usage Example:
+            test_check_single_instance_not_running(mock_getpid, mock_exit, mock_process_iter)
+        """
+        mock_getpid.return_value = 1234
+        
+        # Mocking process info for self only
+        mock_proc_self = MagicMock()
+        mock_proc_self.pid = 1234
+        mock_proc_self.info = {"name": "python3"}
+        mock_proc_self.cmdline.return_value = ["/path/to/venv/bin/python", "-u", "/path/to/bot.py"]
+        
+        # Mocking process info for another python process that is not bot.py
+        mock_proc_other = MagicMock()
+        mock_proc_other.pid = 5678
+        mock_proc_other.info = {"name": "python3"}
+        mock_proc_other.cmdline.return_value = ["/path/to/venv/bin/python", "some_other_script.py"]
+        
+        mock_process_iter.return_value = [mock_proc_self, mock_proc_other]
+        
+        bot.check_single_instance()
+        
+        mock_exit.assert_not_called()
+
     def test_new_features_execution(self):
         """Test wrapper for running new async test cases on the event loop."""
         self.loop.run_until_complete(self._test_transcript_monitor_filtering_async())
