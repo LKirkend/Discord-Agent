@@ -9,6 +9,5 @@
   "forward_endpoint": "",
   "forward_api_key": "",
   "port": 18000,
-  "force_server_chat": 0,
-  "force_only_server": 0
+  "force_server_chat": 0
 }
