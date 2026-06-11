@@ -58,7 +58,7 @@ raw_force_server_chat = os.getenv("FORCE_SERVER_CHAT") or os.getenv("FORCE_ONLY_
 if raw_force_server_chat is not None:
     FORCE_SERVER_CHAT = raw_force_server_chat.lower() in ("true", "1", "yes")
 else:
-    val = config_data.get("force_server_chat", config_data.get("force-only-server", config_data.get("force_only_server", 0)))
+    val = config_data.get("force_server_chat", config_data.get("force_only_server", 0))
     if isinstance(val, str):
         FORCE_SERVER_CHAT = val.lower() in ("true", "1", "yes")
     else:

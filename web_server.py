@@ -1243,11 +1243,7 @@ def update_settings_in_env(req: SettingsRequest):
         ]:
             val = getattr(req, key)
             if val is not None:
-                if key == "force_only_server":
-                    config_data["force-only-server"] = val
-                    config_data["force_only_server"] = val
-                else:
-                    config_data[key] = val
+                config_data[key] = val
                 
         with open(config_path, "w") as f:
             json.dump(config_data, f, indent=2)
