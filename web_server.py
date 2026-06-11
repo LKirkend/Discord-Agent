@@ -157,6 +157,8 @@ class SettingsRequest(BaseModel):
     agent_provider: Optional[str] = None
     agent_model_name: Optional[str] = None
     local_model_name: Optional[str] = None
+    force_server_chat: Optional[int] = None
+    force_only_server: Optional[int] = None
 
 def is_dangerous_command(command: str) -> bool:
     """
@@ -412,7 +414,8 @@ async def get_status_api():
         "model_provider": state.MODEL_PROVIDER,
         "auto_switch_local": state.AUTO_SWITCH_LOCAL,
         "bot_permissions": bot_permissions,
-        "discord_bot_permissions": state.DISCORD_BOT_PERMISSIONS
+        "discord_bot_permissions": state.DISCORD_BOT_PERMISSIONS,
+        "force_server_chat": int(state.FORCE_SERVER_CHAT)
     }
 
 @app.post("/api/pause")
@@ -473,6 +476,10 @@ async def post_settings(req: SettingsRequest):
         state.AGENT_PROVIDER = req.agent_provider
     state.AUTO_SWITCH_LOCAL = req.auto_switch_local
     state.DISCORD_BOT_PERMISSIONS = req.discord_bot_permissions
+    if req.force_server_chat is not None:
+        state.FORCE_SERVER_CHAT = bool(req.force_server_chat)
+    if req.force_only_server is not None:
+        state.FORCE_SERVER_CHAT = bool(req.force_only_server)
     
     # Dynamically apply settings properties to state module
     for key in [
@@ -485,19 +492,24 @@ async def post_settings(req: SettingsRequest):
         "openai_api_key", "openai_model_name",
         "custom_api_key", "custom_model_name", "custom_endpoint",
         "agent_endpoint", "forward_endpoint", "agent_api_key", "forward_api_key",
-        "agent_provider", "agent_model_name", "local_model_name"
+        "agent_provider", "agent_model_name", "local_model_name", "force_server_chat", "force_only_server"
     ]:
         val = getattr(req, key)
         if val is not None:
-            setattr(state, key.upper(), val)
+            if key in ("force_server_chat", "force_only_server"):
+                state.FORCE_SERVER_CHAT = bool(val)
+            else:
+                setattr(state, key.upper(), val)
             
     update_settings_in_env(req)
-    print(f"[API] Settings updated: provider={state.MODEL_PROVIDER}, auto_switch={state.AUTO_SWITCH_LOCAL}, permissions={state.DISCORD_BOT_PERMISSIONS}")
+    print(f"[API] Settings updated: provider={state.MODEL_PROVIDER}, auto_switch={state.AUTO_SWITCH_LOCAL}, permissions={state.DISCORD_BOT_PERMISSIONS}, force_server_chat={state.FORCE_SERVER_CHAT}")
     return {
         "status": "success", 
         "model_provider": state.MODEL_PROVIDER, 
         "auto_switch_local": state.AUTO_SWITCH_LOCAL,
-        "discord_bot_permissions": state.DISCORD_BOT_PERMISSIONS
+        "discord_bot_permissions": state.DISCORD_BOT_PERMISSIONS,
+        "force_server_chat": int(state.FORCE_SERVER_CHAT),
+        "force_only_server": int(state.FORCE_SERVER_CHAT)
     }
 
 @app.get("/status")
@@ -1227,11 +1239,15 @@ def update_settings_in_env(req: SettingsRequest):
             "openai_api_key", "openai_model_name",
             "custom_api_key", "custom_model_name", "custom_endpoint",
             "agent_endpoint", "forward_endpoint", "agent_api_key", "forward_api_key",
-            "agent_provider", "agent_model_name", "local_model_name"
+            "agent_provider", "agent_model_name", "local_model_name", "force_server_chat", "force_only_server"
         ]:
             val = getattr(req, key)
             if val is not None:
-                config_data[key] = val
+                if key == "force_only_server":
+                    config_data["force-only-server"] = val
+                    config_data["force_only_server"] = val
+                else:
+                    config_data[key] = val
                 
         with open(config_path, "w") as f:
             json.dump(config_data, f, indent=2)
@@ -1268,11 +1284,14 @@ def update_settings_in_env(req: SettingsRequest):
             "openai_api_key", "openai_model_name",
             "custom_api_key", "custom_model_name", "custom_endpoint",
             "agent_endpoint", "forward_endpoint", "agent_api_key", "forward_api_key",
-            "agent_provider", "agent_model_name", "local_model_name"
+            "agent_provider", "agent_model_name", "local_model_name", "force_server_chat", "force_only_server"
         ]:
             val = getattr(req, key)
             if val is not None:
-                env_dict[key.upper()] = val
+                if key == "force_only_server":
+                    env_dict["FORCE_ONLY_SERVER"] = str(val)
+                else:
+                    env_dict[key.upper()] = val
                 
         new_lines = []
         for k, v in env_dict.items():
@@ -1341,21 +1360,22 @@ async def post_approve(req: ApprovalRequest):
     target = None
     target_type = "channel"
     
-    if DISCORD_USER_ID:
-        try:
-            target = await state.bot.fetch_user(int(DISCORD_USER_ID))
-            target_type = "user"
-        except Exception as e:
-            target = None
-
-    if not target and DISCORD_USER_NAME:
-        for u in state.bot.users:
-            if u.name.lower() == DISCORD_USER_NAME.lower():
-                target = u
+    if not getattr(state, "FORCE_SERVER_CHAT", False):
+        if DISCORD_USER_ID:
+            try:
+                target = await state.bot.fetch_user(int(DISCORD_USER_ID))
                 target_type = "user"
-                DISCORD_USER_ID = str(u.id)
-                update_env_file(DISCORD_USER_ID)
-                break
+            except Exception as e:
+                target = None
+
+        if not target and DISCORD_USER_NAME:
+            for u in state.bot.users:
+                if u.name.lower() == DISCORD_USER_NAME.lower():
+                    target = u
+                    target_type = "user"
+                    DISCORD_USER_ID = str(u.id)
+                    update_env_file(DISCORD_USER_ID)
+                    break
 
     if not target and DISCORD_CHANNEL_ID:
         try:
@@ -1363,6 +1383,19 @@ async def post_approve(req: ApprovalRequest):
             target_type = "channel"
         except Exception:
             target = None
+
+    if not target:
+        for guild in state.bot.guilds:
+            for name_opt in ["agent-updates", "agent-discussion"]:
+                for chan in guild.text_channels:
+                    if chan.name == name_opt and chan.permissions_for(guild.me).send_messages:
+                        target = chan
+                        target_type = "channel"
+                        break
+                if target:
+                    break
+            if target:
+                break
 
     if not target:
         for guild in state.bot.guilds:
@@ -1528,21 +1561,22 @@ async def post_interaction(req: InteractionRequest):
     target = None
     target_type = "channel"
     
-    if DISCORD_USER_ID:
-        try:
-            target = await state.bot.fetch_user(int(DISCORD_USER_ID))
-            target_type = "user"
-        except Exception:
-            target = None
-
-    if not target and DISCORD_USER_NAME:
-        for u in state.bot.users:
-            if u.name.lower() == DISCORD_USER_NAME.lower():
-                target = u
+    if not getattr(state, "FORCE_SERVER_CHAT", False):
+        if DISCORD_USER_ID:
+            try:
+                target = await state.bot.fetch_user(int(DISCORD_USER_ID))
                 target_type = "user"
-                DISCORD_USER_ID = str(u.id)
-                update_env_file(DISCORD_USER_ID)
-                break
+            except Exception:
+                target = None
+
+        if not target and DISCORD_USER_NAME:
+            for u in state.bot.users:
+                if u.name.lower() == DISCORD_USER_NAME.lower():
+                    target = u
+                    target_type = "user"
+                    DISCORD_USER_ID = str(u.id)
+                    update_env_file(DISCORD_USER_ID)
+                    break
 
     if not target and DISCORD_CHANNEL_ID:
         try:
@@ -1550,6 +1584,19 @@ async def post_interaction(req: InteractionRequest):
             target_type = "channel"
         except Exception:
             target = None
+
+    if not target:
+        for guild in state.bot.guilds:
+            for name_opt in ["agent-updates", "agent-discussion"]:
+                for chan in guild.text_channels:
+                    if chan.name == name_opt and chan.permissions_for(guild.me).send_messages:
+                        target = chan
+                        target_type = "channel"
+                        break
+                if target:
+                    break
+            if target:
+                break
 
     if not target:
         for guild in state.bot.guilds:
@@ -1699,20 +1746,23 @@ async def get_discord_target() -> Optional[discord.abc.Messageable]:
     discord_channel_id = os.getenv("DISCORD_CHANNEL_ID")
     
     target = None
-    if discord_user_id:
-        try:
-            target = await state.bot.fetch_user(int(discord_user_id))
-        except Exception:
-            target = None
-            
-    if not target and discord_username:
-        for u in state.bot.users:
-            if u.name.lower() == discord_username.lower():
-                target = u
-                # Helper imports locally to avoid circular dependencies
-                from web_server import update_env_file
-                update_env_file(str(u.id))
-                break
+    
+    # Skip DM targets if forcing server chat only
+    if not getattr(state, "FORCE_SERVER_CHAT", False):
+        if discord_user_id:
+            try:
+                target = await state.bot.fetch_user(int(discord_user_id))
+            except Exception:
+                target = None
+                
+        if not target and discord_username:
+            for u in state.bot.users:
+                if u.name.lower() == discord_username.lower():
+                    target = u
+                    # Helper imports locally to avoid circular dependencies
+                    from web_server import update_env_file
+                    update_env_file(str(u.id))
+                    break
                 
     if not target and discord_channel_id:
         try:
@@ -1723,13 +1773,23 @@ async def get_discord_target() -> Optional[discord.abc.Messageable]:
     if not target:
         for guild in state.bot.guilds:
             for chan in guild.text_channels:
+                if chan.name == "agent-discussion" and chan.permissions_for(guild.me).send_messages:
+                    target = chan
+                    break
+            if target:
+                break
+
+    if not target:
+        for guild in state.bot.guilds:
+            for chan in guild.text_channels:
                 if chan.permissions_for(guild.me).send_messages:
                     target = chan
                     break
             if target:
                 break
-                
     return target
+
+
 
 
 def translate_claude_response_to_openai(claude_res: dict) -> dict:

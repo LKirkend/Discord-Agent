@@ -1309,6 +1309,50 @@ class TestDiscordApprovalServer(unittest.TestCase):
         args, kwargs = mock_update.call_args
         self.assertEqual(args[0].model_provider, "ollama")
 
+    @patch("web_server.update_settings_in_env")
+    def test_post_settings_force_server_chat(self, mock_update):
+        """
+        Description:
+            Verifies that POST /api/settings successfully updates force_server_chat
+            and sets the dynamic state.FORCE_SERVER_CHAT.
+        Usage:
+            test_post_settings_force_server_chat(mock_update)
+        Usage Example:
+            test_post_settings_force_server_chat(mock_update)
+        """
+        payload = {
+            "model_provider": "gemini",
+            "auto_switch_local": False,
+            "discord_bot_permissions": "8471182706732241",
+            "force_server_chat": 1
+        }
+        resp = client.post("/api/settings", json=payload)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["force_server_chat"], 1)
+        self.assertEqual(bot.state.FORCE_SERVER_CHAT, True)
+
+    @patch("web_server.update_settings_in_env")
+    def test_post_settings_force_only_server(self, mock_update):
+        """
+        Description:
+            Verifies that POST /api/settings successfully updates force_only_server
+            and sets the dynamic state.FORCE_SERVER_CHAT.
+        Usage:
+            test_post_settings_force_only_server(mock_update)
+        Usage Example:
+            test_post_settings_force_only_server(mock_update)
+        """
+        payload = {
+            "model_provider": "gemini",
+            "auto_switch_local": False,
+            "discord_bot_permissions": "8471182706732241",
+            "force_only_server": 1
+        }
+        resp = client.post("/api/settings", json=payload)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["force_only_server"], 1)
+        self.assertEqual(bot.state.FORCE_SERVER_CHAT, True)
+
 
     def test_command_matches_rule_wildcard(self):
         """Test command_matches_rule wildcard '*' support."""
@@ -2042,6 +2086,84 @@ class TestDiscordApprovalServer(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         mock_update.assert_called_once()
 
+    @patch("web_server.state")
+    async def _test_force_server_chat_routing_async(self, mock_state):
+        """
+        Description:
+            Verifies get_discord_target ignores DM routing and resolves to a guild
+            text channel when FORCE_SERVER_CHAT is True.
+        Usage:
+            await self._test_force_server_chat_routing_async()
+        Usage Example:
+            await self._test_force_server_chat_routing_async()
+        """
+        import web_server
+        
+        mock_state.FORCE_SERVER_CHAT = True
+        mock_state.bot.is_ready.return_value = True
+        
+        mock_guild = MagicMock()
+        mock_chan1 = MagicMock()
+        mock_chan1.name = "agent-discussion"
+        mock_chan1.permissions_for.return_value.send_messages = True
+        
+        mock_guild.text_channels = [mock_chan1]
+        mock_state.bot.guilds = [mock_guild]
+        
+        target = await web_server.get_discord_target()
+        self.assertEqual(target, mock_chan1)
+        mock_state.bot.fetch_user.assert_not_called()
+
+    @patch("bot.state")
+    @patch("bot.discover_agent_sessions")
+    @patch("bot.scan_active_processes")
+    async def _test_force_server_chat_dashboard_async(self, mock_scan, mock_sessions, mock_state):
+        """
+        Description:
+            Verifies update_dashboard targets guild text channels instead of DM
+            when FORCE_SERVER_CHAT is True.
+        Usage:
+            await self._test_force_server_chat_dashboard_async()
+        Usage Example:
+            await self._test_force_server_chat_dashboard_async()
+        """
+        import bot
+        
+        mock_sessions.return_value = []
+        mock_scan.return_value = []
+        
+        mock_state.FORCE_SERVER_CHAT = True
+        mock_state.bot.is_ready.return_value = True
+        mock_state.bot.user.id = 12345
+        
+        mock_guild = MagicMock()
+        mock_chan = MagicMock()
+        mock_chan.name = "agent-dashboard"
+        mock_chan.permissions_for.return_value.send_messages = True
+        
+        fut_pins = self.loop.create_future()
+        fut_pins.set_result([])
+        mock_chan.pins = MagicMock(return_value=fut_pins)
+        
+        fut_send = self.loop.create_future()
+        mock_msg = MagicMock()
+        mock_msg.id = 333
+        fut_send.set_result(mock_msg)
+        mock_chan.send = MagicMock(return_value=fut_send)
+        
+        fut_pin = self.loop.create_future()
+        fut_pin.set_result(None)
+        mock_msg.pin = MagicMock(return_value=fut_pin)
+        
+        mock_guild.text_channels = [mock_chan]
+        mock_state.bot.guilds = [mock_guild]
+        
+        bot.dashboard_msg = None
+        await bot.update_dashboard()
+        
+        mock_chan.send.assert_called_once()
+        mock_msg.pin.assert_called_once()
+
     def test_new_features_execution(self):
         """Test wrapper for running new async test cases on the event loop."""
         self.loop.run_until_complete(self._test_transcript_monitor_filtering_async())
@@ -2063,6 +2185,8 @@ class TestDiscordApprovalServer(unittest.TestCase):
         self.loop.run_until_complete(self._test_multi_provider_routing_async())
         self.loop.run_until_complete(self._test_claude_translation_and_stream_async())
         self.loop.run_until_complete(self._test_update_settings_multi_provider_async())
+        self.loop.run_until_complete(self._test_force_server_chat_routing_async())
+        self.loop.run_until_complete(self._test_force_server_chat_dashboard_async())
 
 
 if __name__ == "__main__":

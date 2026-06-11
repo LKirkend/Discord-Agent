@@ -1,3 +1,12 @@
+"""
+File: bot.py
+Description:
+    Discord Liaison Bot logic. Listens for user inputs, posts agent dashboards,
+    manages approval and interaction threads, routes user requests to running
+    agents, and coordinates states.
+Author: Logan Kirkendall <Logan@LKAud.io>
+"""
+
 import os
 import sys
 import glob
@@ -751,12 +760,11 @@ async def update_dashboard():
     Usage Example:
         await update_dashboard()
     """
-    if not state.bot or not state.bot.is_ready() or not os.getenv("DISCORD_USER_ID"):
+    if not state.bot or not state.bot.is_ready():
         return
         
     try:
         DISCORD_USER_ID = os.getenv("DISCORD_USER_ID")
-        user = await state.bot.fetch_user(int(DISCORD_USER_ID))
         
         # Check for #agent-dashboard channel first in any guild
         dashboard_channel = None
@@ -768,7 +776,40 @@ async def update_dashboard():
             if dashboard_channel:
                 break
                 
-        target_channel = dashboard_channel if dashboard_channel else (user.dm_channel or await user.create_dm())
+        if getattr(state, "FORCE_SERVER_CHAT", False):
+            if not dashboard_channel:
+                for guild in state.bot.guilds:
+                    for name_opt in ["agent-updates", "agent-discussion"]:
+                        for chan in guild.text_channels:
+                            if chan.name == name_opt and chan.permissions_for(guild.me).send_messages:
+                                dashboard_channel = chan
+                                break
+                        if dashboard_channel:
+                            break
+                    if dashboard_channel:
+                        break
+            if not dashboard_channel:
+                for guild in state.bot.guilds:
+                    for chan in guild.text_channels:
+                        if chan.permissions_for(guild.me).send_messages:
+                            dashboard_channel = chan
+                            break
+                    if dashboard_channel:
+                        break
+            target_channel = dashboard_channel
+        else:
+            if dashboard_channel:
+                target_channel = dashboard_channel
+            else:
+                if not DISCORD_USER_ID:
+                    print("[Dashboard] No DISCORD_USER_ID to fallback to DM.")
+                    return
+                user = await state.bot.fetch_user(int(DISCORD_USER_ID))
+                target_channel = user.dm_channel or await user.create_dm()
+            
+        if not target_channel:
+            print("[Dashboard] No suitable dashboard channel resolved.")
+            return
         
         pinned_messages = []
         try:
@@ -861,7 +902,7 @@ def create_bot(use_message_content: bool):
                     break
         
         DISCORD_USER_ID = os.getenv("DISCORD_USER_ID")
-        if DISCORD_USER_ID:
+        if DISCORD_USER_ID and not getattr(state, "FORCE_SERVER_CHAT", False):
             try:
                 user = await new_bot.fetch_user(int(DISCORD_USER_ID))
                 dm_channel = user.dm_channel or await user.create_dm()

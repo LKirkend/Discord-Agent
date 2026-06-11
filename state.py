@@ -54,6 +54,16 @@ if raw_auto_switch is not None:
 else:
     AUTO_SWITCH_LOCAL = config_data.get("auto_switch_local", False)
 
+raw_force_server_chat = os.getenv("FORCE_SERVER_CHAT") or os.getenv("FORCE_ONLY_SERVER")
+if raw_force_server_chat is not None:
+    FORCE_SERVER_CHAT = raw_force_server_chat.lower() in ("true", "1", "yes")
+else:
+    val = config_data.get("force_server_chat", config_data.get("force-only-server", config_data.get("force_only_server", 0)))
+    if isinstance(val, str):
+        FORCE_SERVER_CHAT = val.lower() in ("true", "1", "yes")
+    else:
+        FORCE_SERVER_CHAT = bool(val)
+
 DISCORD_BOT_PERMISSIONS = os.getenv("DISCORD_BOT_PERMISSIONS", config_data.get("discord_bot_permissions", "8471182706732241"))
 
 # Local & Remote Endpoint Configurations (Renamed to Agent & Forward Endpoints)

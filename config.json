@@ -8,5 +8,7 @@
   "agent_model_name": "qwen2.5-coder:7b",
   "forward_endpoint": "",
   "forward_api_key": "",
-  "port": 18000
+  "port": 18000,
+  "force_server_chat": 0,
+  "force-only-server": 0
 }
