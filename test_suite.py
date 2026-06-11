@@ -2164,6 +2164,27 @@ class TestDiscordApprovalServer(unittest.TestCase):
         mock_chan.send.assert_called_once()
         mock_msg.pin.assert_called_once()
 
+    @patch("os._exit")
+    async def _test_restart_daemon_async(self, mock_exit):
+        """
+        Description:
+            Verifies the restart daemon API endpoint initiates a shutdown / exit.
+        Usage:
+            await self._test_restart_daemon_async()
+        Usage Example:
+            await self._test_restart_daemon_async()
+        """
+        import web_server
+        from fastapi.testclient import TestClient
+        
+        test_client = TestClient(web_server.app)
+        response = test_client.post("/api/restart-daemon")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "success")
+        
+        await asyncio.sleep(1.1)
+        mock_exit.assert_called_once_with(0)
+
     @patch("psutil.process_iter")
     @patch("sys.exit")
     @patch("os.getpid")
@@ -2245,6 +2266,7 @@ class TestDiscordApprovalServer(unittest.TestCase):
         self.loop.run_until_complete(self._test_update_settings_multi_provider_async())
         self.loop.run_until_complete(self._test_force_server_chat_routing_async())
         self.loop.run_until_complete(self._test_force_server_chat_dashboard_async())
+        self.loop.run_until_complete(self._test_restart_daemon_async())
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import json
 import datetime
 import asyncio
 from typing import Dict, Optional, List, Tuple
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 import discord
@@ -511,6 +511,24 @@ async def post_settings(req: SettingsRequest):
         "force_server_chat": int(state.FORCE_SERVER_CHAT),
         "force_only_server": int(state.FORCE_SERVER_CHAT)
     }
+
+@app.post("/api/restart-daemon")
+async def post_restart_daemon(background_tasks: BackgroundTasks):
+    """
+    Description:
+        Endpoint to restart the Discord liaison daemon process. Exits the process,
+        allowing the process supervisor (like launchd or Docker) to restart it automatically.
+    Usage:
+        res = await post_restart_daemon(background_tasks)
+    Usage Example:
+        res = await post_restart_daemon(background_tasks)
+    """
+    print("[API] Daemon restart requested. Exiting in 1 second...")
+    def shutdown():
+        time.sleep(1.0)
+        os._exit(0)
+    background_tasks.add_task(shutdown)
+    return {"status": "success", "message": "Restarting daemon..."}
 
 @app.get("/status")
 async def get_status_ui():
