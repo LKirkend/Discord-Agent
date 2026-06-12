@@ -1310,6 +1310,35 @@ class TestDiscordApprovalServer(unittest.TestCase):
         self.assertEqual(args[0].model_provider, "ollama")
 
     @patch("web_server.update_settings_in_env")
+    def test_post_settings_partial_success(self, mock_update):
+        """
+        Description:
+            Verifies that a partial settings update (e.g. only updating model_provider)
+            succeeds without Pydantic validation errors and does not clear other state fields.
+        Usage:
+            self.test_post_settings_partial_success(mock_update)
+        Usage Example:
+            self.test_post_settings_partial_success(mock_update)
+        """
+        # Set initial values
+        bot.MODEL_PROVIDER = "ollama"
+        bot.AUTO_SWITCH_LOCAL = True
+        bot.DISCORD_BOT_PERMISSIONS = "12345678"
+        
+        payload = {
+            "model_provider": "gemini"
+        }
+        resp = client.post("/api/settings", json=payload)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["model_provider"], "gemini")
+        self.assertEqual(resp.json()["auto_switch_local"], True)
+        self.assertEqual(resp.json()["discord_bot_permissions"], "12345678")
+        
+        self.assertEqual(bot.MODEL_PROVIDER, "gemini")
+        self.assertEqual(bot.AUTO_SWITCH_LOCAL, True)
+        self.assertEqual(bot.DISCORD_BOT_PERMISSIONS, "12345678")
+
+    @patch("web_server.update_settings_in_env")
     def test_post_settings_force_server_chat(self, mock_update):
         """
         Description:

@@ -320,7 +320,7 @@ def perform_installation(token, user_id, username, client_id, client_secret, gem
             "restart_policy": "always",
             "has_web_ui": True,
             "ui_config": {
-                "display_name": "Liaison Status (AGY2)",
+                "display_name": "Discord Liaison",
                 "views": [
                     { "entrypoint": 2, "path": "/status" },
                     { "entrypoint": 1, "path": "/status" }
