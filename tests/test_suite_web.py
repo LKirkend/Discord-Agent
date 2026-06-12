@@ -12,7 +12,7 @@ warnings.filterwarnings("ignore")
 pytestmark = pytest.mark.filterwarnings("ignore")
 
 # Ensure local imports work
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 # Configure mock environment before importing bot.py
 os.environ["DISCORD_BOT_TOKEN"] = "mock_token"

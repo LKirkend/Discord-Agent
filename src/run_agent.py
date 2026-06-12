@@ -6,7 +6,7 @@ from discord_policy import get_discord_policies, get_discord_hooks
 
 # Load environment variables (contains GEMINI_API_KEY, etc.)
 script_dir = os.path.dirname(os.path.abspath(__file__))
-load_dotenv(os.path.join(script_dir, ".env"))
+load_dotenv(os.path.join(script_dir, "..", ".env"))
 
 async def main():
     print("[Persistent Agent] Initializing safety policies and hooks...")

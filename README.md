@@ -13,7 +13,7 @@ A standalone Discord bot that can act as a liaison to AI models requesting permi
 
 ## 📂 Repository Structure
 
-- `/` (Root): Contains the consolidated daemon backend Python modules:
+- `/src` (Source): Contains the consolidated daemon backend Python modules:
   - `bot.py`: Core Discord bot loop and message dispatch logic.
   - `web_server.py`: FastAPI server processing `/approve` hooks and serving the status bar web UI.
   - `discord_policy.py`: Safe policy hooks loaded into client agents to delegate tool execution confirmations.
@@ -21,6 +21,10 @@ A standalone Discord bot that can act as a liaison to AI models requesting permi
   - `agent_manager.py`: Spawns and manages agent instances.
   - `helpers.py`: Directory scanner, project resolver, and process utilities.
   - `state.py`: Configuration and shared variable states.
+- `/tests`: Holds the test suites validating functionality:
+  - `test_suite.py`: Master test runner.
+  - `test_suite_web.py`, `test_suite_bot.py`, `test_suite_policy.py`: Individual test suites.
+- `/` (Root): Configuration, installers, and workspace files:
   - `install_ide.py` / `install_agy2.py`: Installation scripts for IDE and AGY2 plugin versions respectively.
   - `config.json`: Dynamic endpoints and API key configuration settings.
 - `/ide`: Specific VS Code extension files (such as compiled `main.js` integrations).
@@ -66,7 +70,7 @@ The daemon can run as a standalone service, acting as an OpenAI-compatible API t
    ```
 2. Run the daemon:
    ```bash
-   python3 bot.py
+   python3 src/bot.py
    ```
    Upon startup, the daemon binds to the port specified in `config.json` (default: `18000`) and logs:
    `🚀 Discord Liaison Standalone API running on http://localhost:18000/v1`
