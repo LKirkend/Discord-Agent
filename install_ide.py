@@ -242,20 +242,27 @@ def perform_installation(token, user_id, username, client_id, client_secret, gem
         os.makedirs(scripts_dir, exist_ok=True)
         os.makedirs(sidecars_dir, exist_ok=True)
         
-        # Files to copy
-        files = [
-            "bot.py", "discord_policy.py", "run_agent.py", "test_suite.py", 
-            "requirements.txt", "web_server.py", "discord_ui.py", 
-            "agent_manager.py", "helpers.py", "state.py", "config.json"
+        # Define files/directories to copy
+        items_to_copy = [
+            ("src", "src"),
+            ("tests", "tests"),
+            ("requirements.txt", "requirements.txt"),
+            ("config.json", "config.json")
         ]
-        for f in files:
-            src = os.path.join(source_dir, f)
-            dest = os.path.join(scripts_dir, f)
+        for src_rel, dest_rel in items_to_copy:
+            src = os.path.join(source_dir, src_rel)
+            dest = os.path.join(scripts_dir, dest_rel)
             if os.path.exists(src):
-                log_callback(f"📋 Copying {f}...")
-                shutil.copy2(src, dest)
+                if os.path.isdir(src):
+                    log_callback(f"📋 Copying directory {src_rel}...")
+                    if os.path.exists(dest):
+                        shutil.rmtree(dest)
+                    shutil.copytree(src, dest)
+                else:
+                    log_callback(f"📋 Copying file {src_rel}...")
+                    shutil.copy2(src, dest)
             else:
-                log_callback(f"⚠️ Warning: Source file not found: {f}")
+                log_callback(f"⚠️ Warning: Source not found: {src_rel}")
                 
         # Generate plugin.json
         log_callback("📝 Generating plugin.json...")
@@ -315,7 +322,7 @@ def perform_installation(token, user_id, username, client_id, client_secret, gem
             "command": os.path.abspath(python_exe),
             "args": [
                 "-u",
-                os.path.abspath(os.path.join(scripts_dir, "bot.py"))
+                os.path.abspath(os.path.join(scripts_dir, "src", "bot.py"))
             ],
             "restart_policy": "always",
             "has_web_ui": True,
@@ -336,7 +343,7 @@ def perform_installation(token, user_id, username, client_id, client_secret, gem
         # Register LaunchAgent for auto-launch on macOS login
         launchd_register(
             python_exe=os.path.abspath(python_exe),
-            bot_script=os.path.abspath(os.path.join(scripts_dir, "bot.py")),
+            bot_script=os.path.abspath(os.path.join(scripts_dir, "src", "bot.py")),
             scripts_dir=scripts_dir,
             log_callback=log_callback
         )

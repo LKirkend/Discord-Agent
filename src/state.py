@@ -14,17 +14,17 @@ import time
 import json
 
 # Dynamically locate the site-packages inside the local .venv of the root workspace
-venv_lib_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".venv/lib")
+venv_lib_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".venv/lib"))
 if os.path.exists(venv_lib_dir):
     for d in glob.glob(os.path.join(venv_lib_dir, "python3.*/site-packages")):
         if d not in sys.path:
             sys.path.insert(0, d)
 
 # Configuration Paths
-DEFAULT_ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+DEFAULT_ENV_PATH = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
 ENV_PATH = os.getenv("ENV_FILE_PATH", DEFAULT_ENV_PATH)
 
-DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+DEFAULT_CONFIG_PATH = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config.json"))
 CONFIG_PATH = os.getenv("CONFIG_FILE_PATH", DEFAULT_CONFIG_PATH)
 
 # Load config.json if present

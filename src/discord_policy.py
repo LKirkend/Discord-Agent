@@ -3,7 +3,7 @@ import glob
 import os
 
 # Dynamically locate the site-packages inside the local .venv of the root workspace
-venv_lib_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".venv/lib")
+venv_lib_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".venv/lib"))
 if os.path.exists(venv_lib_dir):
     for d in glob.glob(os.path.join(venv_lib_dir, "python3.*/site-packages")):
         if d not in sys.path:
