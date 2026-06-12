@@ -7,10 +7,15 @@ __pycache__/
 # Environment secrets
 .env
 
+# Agent files
+task.md
+implementation_plan.md
+
 # IDE
 .idea/
 *.swp
 *.swo
+.agents/
 
 # OS
 .DS_Store
